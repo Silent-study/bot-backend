@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Study Bot | Control Center</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <span class="pulse"></span>
+                <h1>Silent<span>Study</span></h1>
+            </div>
+            <p>Advanced LMS Automation System 2026</p>
+        </header>
+
+        <main>
+            <section class="config-card">
+                <h2>Credentials Configuration</h2>
+                <div class="input-group">
+                    <label>Username</label>
+                    <input type="text" id="username" placeholder="Secor.zoe" value="Secor.zoe">
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" id="password" placeholder="••••••••" value="r9j5723t">
+                </div>
+                <div class="input-group">
+                    <label>Target Course Name (Optional)</label>
+                    <input type="text" id="courseName" placeholder="e.g. English 10" value="">
+                </div>
+                <button id="startBtn" class="btn-primary">Launch Automation</button>
+                <button id="stopBtn" class="btn-secondary" style="margin-top: 10px; display: none;">Stop Bot</button>
+            </section>
+
+            <section class="status-card">
+                <div class="status-header">
+                    <h2>Live Activity Logs</h2>
+                    <div id="stateBadge" class="badge">Idle</div>
+                </div>
+                <div id="logs" class="logs-window">
+                    <div class="log-entry system">Ready to launch. Enter credentials and click start.</div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 Silent Study Automation Labs. All rights reserved.</p>
+        </footer>
+    </div>
+    <script src="client.js"></script>
+</body>
+
+</html>
