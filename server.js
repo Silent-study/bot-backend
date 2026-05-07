@@ -5,9 +5,53 @@ const { Server } = require('socket.io');
 const path = require('path');
 const cors = require('cors');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const mongoose = require('mongoose');
 const { runAutomation } = require('./automation');
 
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/silentstudy')
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.error('MongoDB Connection Error:', err));
+
+// User Schema
+const userSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  isPaid: { type: Boolean, default: false },
+  plan: String,
+  addons: [String],
+  expiryDate: Date,
+  createdAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', userSchema);
+
 const app = express();
+app.use(cors());
+app.use(express.static('public'));
+app.use(express.json());
+
+// Registration Endpoint
+app.post('/register', async (req, res) => {
+  try {
+    const { email, password, plan, addons } = req.body;
+    
+    // Check if user exists
+    let user = await User.findOne({ email });
+    if (user) {
+      // In a real app, you might want to handle login here
+      return res.status(400).json({ error: 'Account already exists. Please use a different email.' });
+    }
+
+    user = new User({ email, password, plan, addons });
+    await user.save();
+
+    res.json({ message: 'User registered', userId: user._id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error during registration' });
+  }
+});
 app.use(cors());
 app.use(express.static('public'));
 app.use(express.json());
@@ -20,9 +64,36 @@ const io = new Server(server, {
   }
 });
 
+// Verification Endpoint (Simplified for demo)
+app.get('/verify-payment', async (req, res) => {
+  try {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: 'Missing UID' });
+
+    const user = await User.findById(uid);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // In a real app, you would check Stripe API here.
+    // For now, we'll just set them as paid if they hit this from the success URL.
+    user.isPaid = true;
+    
+    // Set expiry based on plan
+    const now = new Date();
+    if (user.plan === 'day') user.expiryDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    else if (user.plan === 'week') user.expiryDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    else if (user.plan === 'month') user.expiryDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    else if (user.plan === 'six_month') user.expiryDate = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
+
+    await user.save();
+    res.json({ success: true, isPaid: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
 // Stripe Pricing Configuration
 const PLANS = {
-  day: { name: 'Day Key', price: 250 }, // in cents
+  day: { name: 'Day Key', price: 250 }, 
   week: { name: 'Week Key', price: 1000 },
   month: { name: 'Month Key', price: 2000 },
   six_month: { name: '6 Months Key', price: 4000 }
@@ -35,7 +106,7 @@ const ADDONS = {
 
 app.post('/create-checkout-session', async (req, res) => {
   try {
-    const { planId, addons = [] } = req.body;
+    const { planId, addons = [], userId } = req.body;
     const plan = PLANS[planId];
     
     if (!plan) return res.status(400).json({ error: 'Invalid plan' });
@@ -67,7 +138,8 @@ app.post('/create-checkout-session', async (req, res) => {
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}/dashboard?status=success`,
+      metadata: { userId },
+      success_url: `${process.env.FRONTEND_URL}/dashboard?status=success&uid=${userId}`,
       cancel_url: `${process.env.FRONTEND_URL}/#pricing`,
     });
 
