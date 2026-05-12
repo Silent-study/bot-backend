@@ -4,8 +4,12 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const cors = require('cors');
+
+console.log('Stripe Key from ENV:', process.env.STRIPE_SECRET_KEY ? process.env.STRIPE_SECRET_KEY.substring(0, 10) + '...' : 'UNDEFINED');
+
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 const { runAutomation } = require('./automation');
 
 // MongoDB Connection
@@ -35,20 +39,23 @@ app.use(express.json());
 app.post('/register', async (req, res) => {
   try {
     const { email, password, plan, addons } = req.body;
+    console.log('Registration request for:', email);
     
     // Check if user exists
     let user = await User.findOne({ email });
     if (user) {
-      // In a real app, you might want to handle login here
-      return res.status(400).json({ error: 'Account already exists. Please use a different email.' });
+      console.log('User found in DB, proceeding to payment session.');
+      return res.json({ message: 'User already exists, proceeding to payment', userId: user._id });
     }
 
-    user = new User({ email, password, plan, addons });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user = new User({ email, password: hashedPassword, plan, addons });
     await user.save();
+    console.log('New user created:', email);
 
     res.json({ message: 'User registered', userId: user._id });
   } catch (err) {
-    console.error(err);
+    console.error('Registration Error:', err);
     res.status(500).json({ error: 'Server error during registration' });
   }
 });
