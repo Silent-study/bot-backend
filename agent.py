@@ -32,7 +32,7 @@ class OpenAILLM(ChatOpenAI):
                 continue
             content = getattr(msg, 'content', str(msg))
             if isinstance(content, list):
-                # multi-part content — keep as-is
+                # multi-part content - keep as-is
                 pass
             name = type(msg).__name__.lower()
             role = getattr(msg, 'role', '')
@@ -61,7 +61,7 @@ class OpenAILLM(ChatOpenAI):
 
     def __setattr__(self, name, value):
         if name == 'ainvoke':
-            # Block browser-use's broken token-tracking wrapper — we handle
+            # Block browser-use's broken token-tracking wrapper - we handle
             # output_format correctly in our own ainvoke above.
             return
         try:
@@ -98,7 +98,7 @@ async def main():
         temperature=0,
     )
 
-    # Use a fresh Python-only profile folder — separate from Node.js user-data
+    # Use a fresh Python-only profile folder - separate from Node.js user-data
     profile = BrowserProfile(
         headless=False,
         disable_security=True,
@@ -109,7 +109,7 @@ async def main():
 You are an autonomous student agent completing an Edgenuity LMS course. Follow every step exactly.
 
 ==============================
-STEP 1 — LOGIN
+STEP 1 - LOGIN
 ==============================
 Go to: https://auth.edgenuity.com/Login/Login/Student
 
@@ -122,7 +122,7 @@ If you see a login form:
 If you are already on the dashboard (no login form), go to Step 2.
 
 ==============================
-STEP 2 — OPEN COURSE
+STEP 2 - OPEN COURSE
 ==============================
 On the dashboard, find all buttons/cards with class "enrollment-card-btn-next".
 Click the 5th one (index 4, counting from 0).
@@ -130,7 +130,7 @@ Wait up to 30 seconds for the course player iframe (#stageFrame) to appear.
 Wait an additional 10 seconds for the iframe content to fully initialize.
 
 ==============================
-STEP 3 — HANDLE EACH ACTIVITY (loop until all done)
+STEP 3 - HANDLE EACH ACTIVITY (loop until all done)
 ==============================
 
 First, check what type of activity is loaded inside the #stageFrame iframe:

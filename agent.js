@@ -62,7 +62,7 @@ Selector tips:
 - nth-child: input[type=radio]:nth-of-type(2)
 
 Rules:
-- Return ONLY valid JSON — no markdown, no explanation outside JSON
+- Return ONLY valid JSON - no markdown, no explanation outside JSON
 - Return "done" only when the goal is fully achieved`;
 
   const messages = [
