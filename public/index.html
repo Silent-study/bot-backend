@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus Study Bot | Control Center</title>
+    <title>Silent Study | Live Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
@@ -14,46 +14,77 @@
     <div class="container">
         <header>
             <div class="logo">
-                <span class="pulse"></span>
+                <span class="pulse" id="connectionPulse"></span>
                 <h1>Silent<span>Study</span></h1>
             </div>
-            <p>Advanced LMS Automation System 2026</p>
+            <p>Live Monitoring Dashboard</p>
         </header>
 
-        <main>
+        <!-- Auth panel (shown when no token) -->
+        <div id="panel-auth">
             <section class="config-card">
-                <h2>Credentials Configuration</h2>
+                <h2>Connect to Dashboard</h2>
+                <p class="card-subtitle">Enter your credentials to view live session data.</p>
                 <div class="input-group">
-                    <label>Username</label>
-                    <input type="text" id="username" placeholder="Secor.zoe" value="Secor.zoe">
+                    <label>Email</label>
+                    <input type="email" id="dashEmail" placeholder="you@school.com">
                 </div>
                 <div class="input-group">
                     <label>Password</label>
-                    <input type="password" id="password" placeholder="••••••••" value="r9j5723t">
+                    <input type="password" id="dashPassword" placeholder="••••••••">
                 </div>
-                <div class="input-group">
-                    <label>Target Course Name (Optional)</label>
-                    <input type="text" id="courseName" placeholder="e.g. English 10" value="">
-                </div>
-                <button id="startBtn" class="btn-primary">Launch Automation</button>
-                <button id="stopBtn" class="btn-secondary" style="margin-top: 10px; display: none;">Stop Bot</button>
+                <div id="authError" class="error-msg hidden"></div>
+                <button id="connectBtn" class="btn-primary">Connect</button>
             </section>
+        </div>
 
-            <section class="status-card">
-                <div class="status-header">
-                    <h2>Live Activity Logs</h2>
-                    <div id="stateBadge" class="badge">Idle</div>
+        <!-- Dashboard (shown after auth) -->
+        <div id="panel-dashboard" class="hidden">
+            <main>
+                <!-- Stats row -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-questions">0</div>
+                        <div class="stat-label">Questions Answered</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-videos">0</div>
+                        <div class="stat-label">Videos Skipped</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-vocab">0</div>
+                        <div class="stat-label">Vocab Completed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-activities">0</div>
+                        <div class="stat-label">Activities Done</div>
+                    </div>
                 </div>
-                <div id="logs" class="logs-window">
-                    <div class="log-entry system">Ready to launch. Enter credentials and click start.</div>
-                </div>
-            </section>
-        </main>
+
+                <!-- Live log -->
+                <section class="status-card">
+                    <div class="status-header">
+                        <h2>Live Activity Log</h2>
+                        <div id="stateBadge" class="badge">Connecting…</div>
+                    </div>
+                    <div id="logs" class="logs-window">
+                        <div class="log-entry system">Waiting for activity from the Chrome Extension…</div>
+                    </div>
+                </section>
+            </main>
+
+            <div class="dashboard-footer">
+                <span id="dash-plan" class="plan-badge">—</span>
+                <span id="dash-expiry" class="muted"></span>
+                <button id="disconnectBtn" class="btn-ghost-sm">Disconnect</button>
+            </div>
+        </div>
 
         <footer>
             <p>&copy; 2026 Silent Study Automation Labs. All rights reserved.</p>
         </footer>
     </div>
+
     <script src="client.js"></script>
 </body>
 

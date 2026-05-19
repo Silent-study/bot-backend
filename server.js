@@ -1,19 +1,113 @@
+'use strict';
+
 require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const path = require('path');
 const cors = require('cors');
-
-console.log('Stripe Key from ENV:', process.env.STRIPE_SECRET_KEY ? process.env.STRIPE_SECRET_KEY.substring(0, 10) + '...' : 'UNDEFINED');
-
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
-const { runAutomation } = require('./automation');
+const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
-const sendEmail = async (to, subject, html) => {
+const { solveQuestion, solveOpenQuestion } = require('./brain');
+
+// ─── App Setup ────────────────────────────────────────────────────────────────
+const app = express();
+
+// Stripe webhook MUST use raw body — register BEFORE express.json()
+app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), handleStripeWebhook);
+
+// Standard middleware
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow no-origin requests (curl, Postman) and all chrome-extension:// origins
+    if (!origin || origin.startsWith('chrome-extension://')) return callback(null, true);
+    const allowed = process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+      : [];
+    if (!allowed.length || allowed.includes(origin)) return callback(null, true);
+    callback(new Error('CORS: origin not allowed — ' + origin));
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+}));
+app.use(express.static('public'));
+app.use(express.json());
+
+// ─── MongoDB ──────────────────────────────────────────────────────────────────
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/silentstudy')
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.error('MongoDB Connection Error:', err));
+
+// ─── Schemas & Models ─────────────────────────────────────────────────────────
+
+const userSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String },
+  isPaid: { type: Boolean, default: false },
+  plan: { type: String },
+  addons: [String],
+  expiryDate: { type: Date },
+  licenseKey: { type: String },
+  hwid: { type: String },
+  otp: { type: String },
+  otpExpiry: { type: Date },
+  createdAt: { type: Date, default: Date.now },
+});
+const User = mongoose.model('User', userSchema);
+
+// Answer database — DB lookup before hitting OpenAI
+const answerSchema = new mongoose.Schema({
+  hash: { type: String, index: true, unique: true },
+  questionText: { type: String },
+  answer: { type: String },
+  options: [String],
+  activityType: { type: String, enum: ['mcq', 'essay', 'vocab', 'dropdown', 'checkbox'], default: 'mcq' },
+  source: { type: String, enum: ['ai', 'verified'], default: 'ai' },
+  confidence: { type: Number, default: 0.7 },
+  hitCount: { type: Number, default: 1 },
+  createdAt: { type: Date, default: Date.now },
+});
+const Answer = mongoose.model('Answer', answerSchema);
+
+// Session activity log — feeds the live dashboard
+const logSchema = new mongoose.Schema({
+  userId: { type: String, index: true },
+  event: { type: String },
+  detail: { type: String, default: '' },
+  timestamp: { type: Date, default: Date.now },
+});
+const Log = mongoose.model('Log', logSchema);
+
+// ─── Rate Limiters ────────────────────────────────────────────────────────────
+const authLimiter = rateLimit({ windowMs: 60_000, max: 10, message: { error: 'Too many requests, slow down.' } });
+const solveLimiter = rateLimit({ windowMs: 60_000, max: 120, message: { error: 'Rate limit exceeded.' } });
+
+// ─── JWT Middleware ───────────────────────────────────────────────────────────
+const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-env';
+
+function authMiddleware(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided.' });
+  }
+  const token = header.slice(7);
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token.' });
+  }
+}
+
+// ─── Email Helper ─────────────────────────────────────────────────────────────
+async function sendEmail(to, subject, html) {
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST?.trim(),
     port: Number(process.env.SMTP_PORT?.trim()),
@@ -23,368 +117,395 @@ const sendEmail = async (to, subject, html) => {
       pass: process.env.SMTP_PASS?.trim(),
     },
   });
-
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
-      to,
-      subject,
-      html,
-    });
-    console.log('Email sent successfully to:', to);
+    await transporter.sendMail({ from: process.env.SMTP_FROM, to, subject, html });
+    console.log('Email sent to:', to);
   } catch (err) {
-    console.error('Email sending failed:', err);
+    console.error('Email failed:', err.message);
   }
+}
+
+const OTP_EMAIL_HTML = (otp, title, body, color) => {
+  const c = color || '#3b82f6';
+  return '<div style="font-family:\'Segoe UI\',sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#fff;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden;">' +
+    '<div style="background:#111;padding:30px;text-align:center;border-bottom:1px solid #1a1a1a;">' +
+    '<h1 style="margin:0;color:' + c + ';font-size:24px;letter-spacing:1px;">SILENT STUDY</h1></div>' +
+    '<div style="padding:40px 30px;"><h2 style="margin-top:0;color:#fff;font-size:20px;">' + title + '</h2>' +
+    '<p style="color:#a3a3a3;line-height:1.6;">' + body + '</p>' +
+    '<div style="background:#1a1a1a;padding:20px;border-radius:8px;text-align:center;margin:30px 0;border:1px solid #333;">' +
+    '<span style="font-size:32px;font-weight:800;letter-spacing:5px;color:' + c + ';">' + otp + '</span></div>' +
+    '<p style="color:#525252;font-size:13px;text-align:center;">If you didn\'t request this, ignore this email.</p></div>' +
+    '<div style="background:#050505;padding:20px;text-align:center;border-top:1px solid #1a1a1a;font-size:12px;color:#404040;">' +
+    '&copy; 2026 Silent Study LMS Automation.</div></div>';
 };
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/silentstudy')
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.error('MongoDB Connection Error:', err));
+function buildConfirmEmail(user) {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const expiryStr = user.expiryDate ? user.expiryDate.toLocaleDateString() : 'N/A';
+  const planStr = (user.plan || 'month').toUpperCase();
+  return '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;max-width:600px;margin:0 auto;background:#fff;color:#1a1a1a;border-radius:16px;overflow:hidden;">' +
+    '<div style="background:linear-gradient(135deg,#2563eb,#1e40af);padding:40px 20px;text-align:center;">' +
+    '<h1 style="margin:0;color:#fff;font-size:28px;font-weight:800;">SILENT STUDY PRO</h1>' +
+    '<p style="color:rgba(255,255,255,.8);margin-top:10px;">Payment Confirmed</p></div>' +
+    '<div style="padding:40px 30px;">' +
+    '<h2 style="margin-top:0;">You\'re all set!</h2>' +
+    '<p style="color:#4b5563;line-height:1.6;">Log in to the Chrome Extension with your email and password to start automating.</p>' +
+    '<div style="background:#f8fafc;padding:25px;border-radius:12px;margin:30px 0;border:1px solid #e2e8f0;">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e2e8f0;">' +
+    '<span style="color:#64748b;font-size:14px;">PLAN</span><strong>' + planStr + ' KEY</strong></div>' +
+    '<div style="display:flex;justify-content:space-between;padding-top:12px;">' +
+    '<span style="color:#64748b;font-size:14px;">ACCESS UNTIL</span><strong>' + expiryStr + '</strong></div></div>' +
+    '<a href="' + frontendUrl + '" style="display:block;padding:18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;text-align:center;">Open Dashboard</a></div>' +
+    '<div style="background:#f1f5f9;padding:20px;text-align:center;font-size:12px;color:#94a3b8;">&copy; 2026 Silent Study LMS Automation.</div></div>';
+}
 
-// User Schema
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  isPaid: { type: Boolean, default: false },
-  plan: String,
-  addons: [String],
-  expiryDate: Date,
-  otp: String,
-  otpExpiry: Date,
-  createdAt: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', userSchema);
-
-const app = express();
-app.use(cors());
-app.use(express.static('public'));
-app.use(express.json());
-
-// OTP Generation
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-// 1. Send OTP for Registration
-app.post('/send-otp', async (req, res) => {
+function hashQuestion(text) {
+  const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  return crypto.createHash('sha256').update(normalized).digest('hex');
+}
+
+function planDays(plan) {
+  const map = { day: 1, week: 7, month: 30, six_month: 180 };
+  return map[plan] || 30;
+}
+
+// ─── Auth Routes ──────────────────────────────────────────────────────────────
+
+app.post('/send-otp', authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email required.' });
+    }
     const otp = generateOTP();
-    const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
-
-    // Store temporary OTP in DB (or a separate OTP collection)
-    // For simplicity, we'll use the User model but might need to handle partial users
-    await User.findOneAndUpdate(
-      { email },
-      { otp, otpExpiry: expiry },
-      { upsert: true }
-    );
-
-    const emailHtml = `
-      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; color: #ffffff; border: 1px solid #1a1a1a; border-radius: 12px; overflow: hidden;">
-        <div style="background-color: #111111; padding: 30px; text-align: center; border-bottom: 1px solid #1a1a1a;">
-          <h1 style="margin: 0; color: #3b82f6; font-size: 24px; letter-spacing: 1px;">SILENT STUDY</h1>
-        </div>
-        <div style="padding: 40px 30px;">
-          <h2 style="margin-top: 0; color: #ffffff; font-size: 20px;">Verify Your Identity</h2>
-          <p style="color: #a3a3a3; line-height: 1.6;">Please use the following verification code to finalize your request. This code is valid for 10 minutes.</p>
-          <div style="background-color: #1a1a1a; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0; border: 1px solid #333;">
-            <span style="font-size: 32px; font-weight: 800; letter-spacing: 5px; color: #3b82f6;">${otp}</span>
-          </div>
-          <p style="color: #525252; font-size: 13px; text-align: center;">If you didn't request this, you can safely ignore this email.</p>
-        </div>
-        <div style="background-color: #050505; padding: 20px; text-align: center; border-top: 1px solid #1a1a1a; font-size: 12px; color: #404040;">
-          &copy; 2026 Silent Study LMS Automation. All rights reserved.
-        </div>
-      </div>
-    `;
-
-    await sendEmail(
-      email,
-      'Your Silent Study Verification Code',
-      emailHtml
-    );
-
-    res.json({ success: true, message: 'OTP sent' });
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    await User.findOneAndUpdate({ email }, { otp, otpExpiry }, { upsert: true, new: true });
+    await sendEmail(email, 'Your Silent Study Verification Code',
+      OTP_EMAIL_HTML(otp, 'Verify Your Identity',
+        'Use the code below to complete registration. Valid for 10 minutes.'));
+    res.json({ success: true, message: 'OTP sent.' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to send OTP' });
+    console.error('send-otp error:', err);
+    res.status(500).json({ error: 'Failed to send OTP.' });
   }
 });
 
-// 2. Forgot Password - Send OTP
-app.post('/forgot-password', async (req, res) => {
+app.post('/register', async (req, res) => {
   try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const otp = generateOTP();
-    user.otp = otp;
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
-
-    const emailHtml = `
-      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0a0a0a; color: #ffffff; border: 1px solid #1a1a1a; border-radius: 12px; overflow: hidden;">
-        <div style="background-color: #111111; padding: 30px; text-align: center; border-bottom: 1px solid #1a1a1a;">
-          <h1 style="margin: 0; color: #3b82f6; font-size: 24px; letter-spacing: 1px;">SILENT STUDY</h1>
-        </div>
-        <div style="padding: 40px 30px;">
-          <h2 style="margin-top: 0; color: #ffffff; font-size: 20px;">Reset Your Password</h2>
-          <p style="color: #a3a3a3; line-height: 1.6;">We received a request to reset your password. Use the code below to set a new password.</p>
-          <div style="background-color: #1a1a1a; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0; border: 1px solid #333;">
-            <span style="font-size: 32px; font-weight: 800; letter-spacing: 5px; color: #ef4444;">${otp}</span>
-          </div>
-          <p style="color: #525252; font-size: 13px; text-align: center;">If you didn't request a password reset, please secure your account.</p>
-        </div>
-        <div style="background-color: #050505; padding: 20px; text-align: center; border-top: 1px solid #1a1a1a; font-size: 12px; color: #404040;">
-          &copy; 2026 Silent Study LMS Automation. All rights reserved.
-        </div>
-      </div>
-    `;
-
-    await sendEmail(
-      email,
-      'Silent Study - Password Reset OTP',
-      emailHtml
-    );
-
-    res.json({ success: true, message: 'Reset OTP sent' });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// 3. Reset Password
-app.post('/reset-password', async (req, res) => {
-  try {
-    const { email, otp, newPassword } = req.body;
+    const { email, password, plan, addons, otp } = req.body;
+    if (!email || !password || !otp) {
+      return res.status(400).json({ error: 'email, password, and otp required.' });
+    }
     const user = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
-    if (!user) return res.status(400).json({ error: 'Invalid or expired OTP' });
+    if (!user) return res.status(400).json({ error: 'Invalid or expired OTP.' });
 
-    user.password = await bcrypt.hash(newPassword, 10);
+    user.password = await bcrypt.hash(password, 12);
+    user.plan = plan || 'month';
+    user.addons = addons || [];
     user.otp = undefined;
     user.otpExpiry = undefined;
     await user.save();
 
-    res.json({ success: true, message: 'Password updated successfully' });
+    res.json({ message: 'Registered successfully.', userId: user._id });
   } catch (err) {
-    res.status(500).json({ error: 'Reset failed' });
+    console.error('register error:', err);
+    res.status(500).json({ error: 'Registration failed.' });
   }
 });
 
-// Registration Endpoint
-app.post('/register', async (req, res) => {
+app.post('/forgot-password', authLimiter, async (req, res) => {
   try {
-    const { email, password, plan, addons, otp } = req.body;
-    console.log('Registration request for:', email);
-    
-    // Verify OTP
-    const userWithOtp = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
-    if (!userWithOtp) {
-      return res.status(400).json({ error: 'Invalid or expired OTP. Please request a new one.' });
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    const otp = generateOTP();
+    user.otp = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+    await sendEmail(email, 'Silent Study — Password Reset',
+      OTP_EMAIL_HTML(otp, 'Reset Your Password',
+        'Use the code below to set a new password. Valid for 10 minutes.', '#ef4444'));
+    res.json({ success: true, message: 'Reset OTP sent.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+app.post('/reset-password', async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const user = await User.findOne({ email, otp, otpExpiry: { $gt: Date.now() } });
+    if (!user) return res.status(400).json({ error: 'Invalid or expired OTP.' });
+    user.password = await bcrypt.hash(newPassword, 12);
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    await user.save();
+    res.json({ success: true, message: 'Password updated.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Reset failed.' });
+  }
+});
+
+// Login — returns JWT used by Chrome Extension
+app.post('/api/auth/login', authLimiter, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'email and password required.' });
+
+    const user = await User.findOne({ email });
+    if (!user || !user.password) return res.status(401).json({ error: 'Invalid credentials.' });
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ error: 'Invalid credentials.' });
+
+    if (!user.isPaid || !user.expiryDate || user.expiryDate < new Date()) {
+      return res.status(403).json({ error: 'No active subscription.' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Update the temporary OTP record into a full user
-    userWithOtp.password = hashedPassword;
-    userWithOtp.plan = plan;
-    userWithOtp.addons = addons;
-    userWithOtp.otp = undefined; // Clear OTP after use
-    userWithOtp.otpExpiry = undefined;
-    
-    await userWithOtp.save();
-    console.log('User registered successfully with OTP:', email);
-
-    res.json({ message: 'User registered', userId: userWithOtp._id });
-  } catch (err) {
-    console.error('Registration Error:', err);
-    res.status(500).json({ error: 'Server error during registration' });
-  }
-});
-app.use(cors());
-app.use(express.static('public'));
-app.use(express.json());
-
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: ["http://localhost:5173", "http://localhost:3000"],
-    methods: ["GET", "POST"]
-  }
-});
-
-// Verification Endpoint (Simplified for demo)
-app.get('/verify-payment', async (req, res) => {
-  try {
-    const { uid } = req.query;
-    if (!uid) return res.status(400).json({ error: 'Missing UID' });
-
-    const user = await User.findById(uid);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    // In a real app, you would check Stripe API here.
-    // For now, we'll just set them as paid if they hit this from the success URL.
-    user.isPaid = true;
-    
-    // Set expiry based on plan
-    const now = new Date();
-    if (user.plan === 'day') user.expiryDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    else if (user.plan === 'week') user.expiryDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    else if (user.plan === 'month') user.expiryDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    else if (user.plan === 'six_month') user.expiryDate = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
-
-    await user.save();
-
-    // Send Confirmation Email
-    const confirmHtml = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; color: #1a1a1a; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-        <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 40px 20px; text-align: center;">
-          <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 800; letter-spacing: 1px;">SILENT STUDY PRO</h1>
-          <p style="color: rgba(255,255,255,0.8); margin-top: 10px; font-size: 16px;">Payment Confirmed Successfully</p>
-        </div>
-        <div style="padding: 40px 30px;">
-          <h2 style="margin-top: 0; color: #111827; font-size: 22px;">Welcome Aboard!</h2>
-          <p style="color: #4b5563; line-height: 1.6; font-size: 15px;">Your account has been upgraded. You now have full access to all premium automation features, including video skipping and EdgeEX support.</p>
-          
-          <div style="background-color: #f8fafc; padding: 25px; border-radius: 12px; margin: 30px 0; border: 1px solid #e2e8f0;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px;">
-              <span style="color: #64748b; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Current Plan</span>
-              <span style="color: #1e293b; font-weight: 700; font-size: 15px;">${user.plan?.toUpperCase()} KEY</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding-top: 12px;">
-              <span style="color: #64748b; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Access Until</span>
-              <span style="color: #1e293b; font-weight: 700; font-size: 15px;">${user.expiryDate?.toLocaleDateString()}</span>
-            </div>
-          </div>
-
-          <a href="${process.env.FRONTEND_URL}/dashboard" style="display: block; width: 100%; padding: 18px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 10px; font-weight: 700; text-align: center; font-size: 16px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);">Launch Dashboard</a>
-          
-          <p style="margin-top: 30px; color: #94a3b8; font-size: 13px; text-align: center; line-height: 1.5;">
-            Need help getting started? Visit our <a href="${process.env.FRONTEND_URL}/#tutorial" style="color: #2563eb; text-decoration: none;">tutorial guide</a> or join our Discord community.
-          </p>
-        </div>
-        <div style="background-color: #f1f5f9; padding: 25px; text-align: center; font-size: 12px; color: #94a3b8;">
-          &copy; 2026 Silent Study LMS Automation. Built for students, by students.
-        </div>
-      </div>
-    `;
-
-    await sendEmail(
-      user.email,
-      'Silent Study - Payment Successful!',
-      confirmHtml
+    const token = jwt.sign(
+      { userId: String(user._id), plan: user.plan, email: user.email },
+      JWT_SECRET,
+      { expiresIn: '7d' }
     );
 
-    res.json({ success: true, isPaid: true });
+    res.json({ token, expiresAt: user.expiryDate, plan: user.plan, addons: user.addons });
   } catch (err) {
-    res.status(500).json({ error: 'Verification failed' });
+    console.error('login error:', err);
+    res.status(500).json({ error: 'Login failed.' });
   }
 });
 
-// Stripe Pricing Configuration
+// Bind HWID — first device locks the account
+app.post('/api/auth/bind-hwid', authMiddleware, async (req, res) => {
+  try {
+    const { hwid } = req.body;
+    if (!hwid) return res.status(400).json({ error: 'hwid required.' });
+
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    if (user.hwid && user.hwid !== hwid) {
+      return res.status(403).json({ error: 'Account bound to a different device.' });
+    }
+    if (!user.hwid) { user.hwid = hwid; await user.save(); }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'HWID bind failed.' });
+  }
+});
+
+// ─── Stripe Routes ────────────────────────────────────────────────────────────
+
 const PLANS = {
-  day: { name: 'Day Key', price: 250 }, 
+  day: { name: 'Day Key', price: 250 },
   week: { name: 'Week Key', price: 1000 },
   month: { name: 'Month Key', price: 2000 },
-  six_month: { name: '6 Months Key', price: 4000 }
+  six_month: { name: '6 Months Key', price: 4000 },
 };
 
 const ADDONS = {
-  service: { name: 'Service Key', price: 500 },
-  proctor: { name: 'Proctor Bypass', price: 1000 }
+  service: { name: 'Service Key (5 users)', price: 500 },
+  proctor: { name: 'Proctorio Bypass', price: 1000 },
 };
 
 app.post('/create-checkout-session', async (req, res) => {
   try {
     const { planId, addons = [], userId } = req.body;
     const plan = PLANS[planId];
-    
-    if (!plan) return res.status(400).json({ error: 'Invalid plan' });
+    if (!plan) return res.status(400).json({ error: 'Invalid plan.' });
 
     const line_items = [{
       price_data: {
         currency: 'usd',
-        product_data: { name: `Silent Study - ${plan.name}` },
+        product_data: { name: 'Silent Study \u2014 ' + plan.name },
         unit_amount: plan.price,
       },
       quantity: 1,
     }];
 
-    addons.forEach(addonId => {
+    for (const addonId of addons) {
       const addon = ADDONS[addonId];
       if (addon) {
         line_items.push({
           price_data: {
             currency: 'usd',
-            product_data: { name: `Add-on: ${addon.name}` },
+            product_data: { name: 'Add-on: ' + addon.name },
             unit_amount: addon.price,
           },
           quantity: 1,
         });
       }
-    });
+    }
 
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
-      metadata: { userId },
-      success_url: `${process.env.FRONTEND_URL}/dashboard?status=success&uid=${userId}`,
-      cancel_url: `${process.env.FRONTEND_URL}/#pricing`,
+      metadata: { userId, planId },
+      success_url: frontendUrl + '/?payment=success',
+      cancel_url: frontendUrl + '/#pricing',
     });
 
     res.json({ id: session.id, url: session.url });
   } catch (err) {
-    console.error('Stripe Error:', err);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    console.error('Stripe checkout error:', err);
+    res.status(500).json({ error: 'Failed to create checkout session.' });
   }
 });
 
-const instances = new Map();
+async function handleStripeWebhook(req, res) {
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('Stripe webhook signature error:', err.message);
+    return res.status(400).send('Webhook Error: ' + err.message);
+  }
 
-io.on('connection', (socket) => {
-  console.log('Client connected');
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const userId = session.metadata && session.metadata.userId;
+    const planId = session.metadata && session.metadata.planId;
+    if (!userId) return res.json({ received: true });
 
-  socket.on('start-bot', async (data) => {
-    const { username, password, url, courseName } = data;
-    socket.emit('log', '🚀 Bot process started...');
+    try {
+      const user = await User.findById(userId);
+      if (!user) return res.json({ received: true });
 
-    // Run automation and store the controller/instance if needed
-    // For simplicity, we'll pass a 'getIsStopped' check to automation
-    let isStopped = false;
-    instances.set(socket.id, () => { isStopped = true; });
+      const now = new Date();
+      user.isPaid = true;
+      user.plan = planId || user.plan || 'month';
+      user.expiryDate = new Date(now.getTime() + planDays(user.plan) * 24 * 60 * 60 * 1000);
+      user.licenseKey = 'SS-' + uuidv4().toUpperCase().replace(/-/g, '').slice(0, 12);
+      await user.save();
 
-    await runAutomation(
-      username,
-      password,
-      url || 'https://auth.edgenuity.com/Login/Login/Student',
-      courseName,
-      (msg) => socket.emit('log', msg),
-      (state) => socket.emit('state', state),
-      () => isStopped
-    );
-
-    socket.emit('bot-finished');
-    instances.delete(socket.id);
-  });
-
-  socket.on('stop-bot', () => {
-    const stopFn = instances.get(socket.id);
-    if (stopFn) {
-      stopFn();
-      console.log(`Stop requested for ${socket.id}`);
+      await sendEmail(user.email, 'Silent Study \u2014 Payment Confirmed!', buildConfirmEmail(user));
+      console.log('Payment confirmed for:', user.email, 'plan:', user.plan);
+    } catch (err) {
+      console.error('Webhook user update error:', err);
     }
-  });
+  }
 
-  socket.on('disconnect', () => {
-    const stopFn = instances.get(socket.id);
-    if (stopFn) stopFn();
-    instances.delete(socket.id);
-  });
+  res.json({ received: true });
+}
+
+// ─── Core API: Answer Solver ──────────────────────────────────────────────────
+
+app.post('/api/solve', authMiddleware, solveLimiter, async (req, res) => {
+  try {
+    const { questionText, options, activityType } = req.body;
+    const opts = options || [];
+    const type = activityType || 'mcq';
+
+    if (!questionText || questionText.length < 5) {
+      return res.status(400).json({ error: 'questionText too short.' });
+    }
+
+    const hash = hashQuestion(questionText);
+
+    // 1. DB lookup — free, instant, zero AI cost
+    const cached = await Answer.findOneAndUpdate(
+      { hash },
+      { $inc: { hitCount: 1 } },
+      { new: false }
+    );
+    if (cached) {
+      return res.json({ answer: cached.answer, source: 'db', confidence: cached.confidence });
+    }
+
+    // 2. AI fallback
+    let answer;
+    if (type === 'essay') {
+      answer = await solveOpenQuestion(questionText);
+    } else {
+      answer = await solveQuestion(questionText, opts);
+    }
+
+    // 3. Store for future requests — DB grows with every new question
+    await Answer.create({
+      hash,
+      questionText: questionText.slice(0, 2000),
+      answer,
+      options: opts,
+      activityType: type,
+      source: 'ai',
+      confidence: 0.7,
+    });
+
+    res.json({ answer, source: 'ai', confidence: 0.7 });
+  } catch (err) {
+    console.error('solve error:', err);
+    res.status(500).json({ error: 'Failed to generate answer.' });
+  }
 });
 
-const PORT = 3000;
+// ─── Activity Log & Stats ─────────────────────────────────────────────────────
+
+app.post('/api/log', authMiddleware, async (req, res) => {
+  try {
+    const { event, detail } = req.body;
+    const userId = req.user.userId;
+    await Log.create({ userId, event, detail: detail || '' });
+    io.to(userId).emit('activity-log', { event, detail: detail || '', timestamp: new Date() });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Log failed.' });
+  }
+});
+
+app.get('/api/stats', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const logs = await Log.find({ userId, timestamp: { $gte: since } });
+
+    res.json({
+      questionsAnswered: logs.filter(l => l.event.includes('ANSWERED')).length,
+      videosSkipped: logs.filter(l => l.event === 'VIDEO_SKIP_DONE').length,
+      vocabCompleted: logs.filter(l => l.event === 'VOCAB_DONE').length,
+      activitiesTotal: logs.filter(l => l.event === 'NEXT_ACTIVITY_CLICKED').length,
+      recentLogs: logs.slice(-50).reverse(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Stats failed.' });
+  }
+});
+
+// ─── HTTP + Socket.IO ─────────────────────────────────────────────────────────
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+      : '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+io.on('connection', (socket) => {
+  socket.on('authenticate', (token) => {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      socket.join(decoded.userId);
+      socket.emit('authenticated', { userId: decoded.userId, plan: decoded.plan });
+    } catch {
+      socket.emit('auth-error', { error: 'Invalid token.' });
+    }
+  });
+  socket.on('disconnect', () => { });
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log('[SilentStudy] Server running at http://localhost:' + PORT);
+  console.log('[SilentStudy] JWT secret: ' + (JWT_SECRET !== 'change-this-secret-in-env' ? 'custom set' : 'DEFAULT — set JWT_SECRET in .env!'));
 });

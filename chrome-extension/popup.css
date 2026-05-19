@@ -1,0 +1,306 @@
+/* ── Reset & Base ───────────────────────────────────────────── */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    width: 320px;
+    min-height: 200px;
+    background: #0a0a0a;
+    color: #e5e5e5;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+}
+
+.panel {
+    padding: 20px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.logo {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #fff;
+}
+
+.logo span {
+    color: #3b82f6;
+}
+
+.tagline {
+    font-size: 11px;
+    color: #555;
+    margin-top: 2px;
+}
+
+/* ── Form ───────────────────────────────────────────────────── */
+.form-group {
+    margin-bottom: 12px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 4px;
+    color: #888;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 9px 12px;
+    background: #141414;
+    border: 1px solid #252525;
+    border-radius: 8px;
+    color: #e5e5e5;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.form-group input:focus {
+    border-color: #3b82f6;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn-primary {
+    width: 100%;
+    padding: 10px;
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-top: 4px;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-primary:active {
+    background: #1d4ed8;
+}
+
+.btn-primary:disabled {
+    background: #1e3a6e;
+    cursor: not-allowed;
+}
+
+.btn-ghost {
+    background: none;
+    border: 1px solid #252525;
+    color: #666;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-ghost:hover {
+    border-color: #555;
+    color: #aaa;
+}
+
+/* ── Error ──────────────────────────────────────────────────── */
+.error-msg {
+    background: #2d0f0f;
+    border: 1px solid #6b1212;
+    color: #f87171;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+}
+
+/* ── Info rows ──────────────────────────────────────────────── */
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #141414;
+}
+
+.label {
+    color: #666;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.muted {
+    color: #555;
+}
+
+.badge-plan {
+    background: #1e3a5f;
+    color: #60a5fa;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* ── Toggle Switch ──────────────────────────────────────────── */
+.toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #141414;
+}
+
+.toggle {
+    width: 42px;
+    height: 24px;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+    padding: 0;
+}
+
+.toggle.off {
+    background: #252525;
+}
+
+.toggle.on {
+    background: #2563eb;
+}
+
+.thumb {
+    display: block;
+    width: 18px;
+    height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    position: absolute;
+    top: 3px;
+    transition: left 0.2s;
+}
+
+.toggle.off .thumb {
+    left: 3px;
+}
+
+.toggle.on .thumb {
+    left: 21px;
+}
+
+/* ── Stats Grid ─────────────────────────────────────────────── */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.stat {
+    background: #111;
+    border: 1px solid #1c1c1c;
+    border-radius: 8px;
+    padding: 10px 6px;
+    text-align: center;
+}
+
+.stat-num {
+    font-size: 20px;
+    font-weight: 700;
+    color: #3b82f6;
+}
+
+.stat-label {
+    font-size: 10px;
+    color: #555;
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Log Section ────────────────────────────────────────────── */
+.log-section {
+    margin-top: 4px;
+}
+
+.log-title {
+    color: #666;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.log-list {
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.log-list::-webkit-scrollbar {
+    width: 3px;
+}
+
+.log-list::-webkit-scrollbar-thumb {
+    background: #252525;
+    border-radius: 2px;
+}
+
+.log-item {
+    padding: 5px 0;
+    border-bottom: 1px solid #111;
+    font-size: 11px;
+    color: #a3a3a3;
+    display: flex;
+    gap: 6px;
+}
+
+.log-item .log-time {
+    color: #444;
+    flex-shrink: 0;
+}
+
+.log-item.success .log-event {
+    color: #4ade80;
+}
+
+.log-item.error .log-event {
+    color: #f87171;
+}
+
+/* ── Footnote ───────────────────────────────────────────────── */
+.footnote {
+    text-align: center;
+    margin-top: 12px;
+    color: #444;
+    font-size: 11px;
+}
+
+.footnote a {
+    color: #3b82f6;
+    text-decoration: none;
+}
+
+.footnote a:hover {
+    text-decoration: underline;
+}

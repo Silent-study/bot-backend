@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silent Study</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <!-- Login Panel -->
+    <div id="panel-login" class="panel">
+        <div class="header">
+            <div class="logo">Silent<span>Study</span></div>
+            <p class="tagline">LMS Automation</p>
+        </div>
+
+        <div id="login-error" class="error-msg hidden"></div>
+
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="email" placeholder="you@school.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+
+        <button id="btn-login" class="btn-primary">Log In</button>
+
+        <p class="footnote">Don't have an account? <a href="https://YOUR_BACKEND_DOMAIN" target="_blank">Get a plan</a>
+        </p>
+    </div>
+
+    <!-- Dashboard Panel -->
+    <div id="panel-dashboard" class="panel hidden">
+        <div class="header">
+            <div class="logo">Silent<span>Study</span></div>
+            <button id="btn-logout" class="btn-ghost">Log out</button>
+        </div>
+
+        <div class="info-row">
+            <span class="label">Plan</span>
+            <span id="info-plan" class="badge-plan">—</span>
+        </div>
+        <div class="info-row">
+            <span class="label">Expires</span>
+            <span id="info-expiry" class="muted">—</span>
+        </div>
+
+        <div class="toggle-row">
+            <span class="label">Bot Active</span>
+            <button id="btn-toggle" class="toggle off">
+                <span class="thumb"></span>
+            </button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat">
+                <div id="stat-questions" class="stat-num">0</div>
+                <div class="stat-label">Answered</div>
+            </div>
+            <div class="stat">
+                <div id="stat-videos" class="stat-num">0</div>
+                <div class="stat-label">Videos Skipped</div>
+            </div>
+            <div class="stat">
+                <div id="stat-vocab" class="stat-num">0</div>
+                <div class="stat-label">Vocab Done</div>
+            </div>
+        </div>
+
+        <div class="log-section">
+            <div class="log-title">Recent Activity</div>
+            <div id="log-list" class="log-list">
+                <div class="log-item muted">No activity yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>

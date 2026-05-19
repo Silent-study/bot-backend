@@ -1,0 +1,43 @@
+{
+    "manifest_version": 3,
+    "name": "Silent Study",
+    "version": "1.0.0",
+    "description": "Edgenuity LMS automation — Silent Study",
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "permissions": [
+        "storage",
+        "scripting",
+        "tabs"
+    ],
+    "host_permissions": [
+        "*://*.edgenuity.com/*",
+        "*://*.edgex.com/*",
+        "*://*.k12.com/*",
+        "http://localhost:3000/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": "icons/icon48.png"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*.edgenuity.com/*",
+                "*://*.edgex.com/*",
+                "*://*.k12.com/*"
+            ],
+            "js": [
+                "content_script.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        }
+    ]
+}
