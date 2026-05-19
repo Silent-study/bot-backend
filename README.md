@@ -357,8 +357,10 @@ Injected into every matching frame via `all_frames: true`. The script detects wh
 - Clicks `em#frameProgress` to advance internal steps
 - Clicks `a.footnav.goRight` to move to the next activity
 - Watches for DOM changes with a 3500ms debounced MutationObserver
+- Respects `nextActivityLocked` — will not call `clickNextActivity()` while an activity frame holds the lock (set via `postMessage`)
 
 **Activity frame responsibilities (`initActivityFrame`):**
+- Handles **Direct Instruction** (FrameChain multi-step video) — checked first, before any other type
 - Skips videos (`skipVideo`)
 - Handles vocab activities (`handleVocab`)
 - Answers questions (`handleQuestion`) in priority order:
@@ -379,6 +381,82 @@ Injected into every matching frame via `all_frames: true`. The script detects wh
 The observer is paused (`pauseActivityObserver`) before the bot makes any DOM changes (checking radios, typing) and resumed after a delay. This prevents infinite loops.
 
 **`lastAnsweredHash`:** A module-level variable that stores the hash of the last question answered. The bot checks this before answering to avoid answering the same question twice during a DOM refresh cycle.
+
+---
+
+### 5.3.1 Direct Instruction (FrameChain multi-step video)
+
+The most complex activity type. Edgenuity loads it as a **three-frame stack**:
+
+| Frame | URL pattern | Role in bot |
+|---|---|---|
+| Top frame | `…/player/LTILaunch/` | Navigation — clicks Next Activity |
+| Stage frame | `…/ContentViewers/FrameChain…` | Step nav — has `.FramesList`, `#frameProgress`, `#iFramePreview` |
+| Content frame | `media.edgenuity.com/contentengine/frames/…` | Video player — contains the `<video>` element |
+
+The content script runs in **all three frames** simultaneously (`all_frames: true`). `isDirectInstruction()` returns `true` only in the stage frame (where `.FramesList .FrameRight` is present).
+
+**Execution flow:**
+
+```
+Stage frame                    Top frame              Content frame
+     │                             │                       │
+     │  postMessage(LOCK_NEXT)     │                       │
+     │ ──────────────────────────► │  nextActivityLocked=true
+     │                             │                       │
+     │  [loop for each step]       │                       │
+     │  ─ wait 2-3s for iframe ─   │                       │
+     │  ─ reset VIDEO_DONE flag ─  │                       │
+     │                             │   runActivityCycle()  │
+     │                             │                     ──┤
+     │                             │                       │ skipVideo()
+     │                             │                       │ seeks video to end
+     │                             │                       │
+     │  postMessage(VIDEO_DONE)    │                       │
+     │ ◄───────────────────────────────────────────────── │
+     │  waitForStepComplete()                              │
+     │  returns true ✓                                     │
+     │                             │                       │
+     │  [click .FrameRight]        │                       │
+     │  [repeat for next step]     │                       │
+     │                             │                       │
+     │  postMessage(UNLOCK_NEXT)   │                       │
+     │ ──────────────────────────► │  nextActivityLocked=false
+     │                             │  runTopCycle()
+     │                             │  clickNextActivity() ✓
+```
+
+**Why `FrameComplete` alone isn't trusted:**  
+Edgenuity applies `FrameComplete` CSS class to already-visited steps on page load based on server-side state — even when the video was never fully watched in this session. The bot tracks `wasAlreadyComplete` (snapshot taken when each step starts). If `true`, `waitForStepComplete()` skips the `FrameComplete` DOM check and waits for the `SILENTSTUDY_VIDEO_DONE` message or other transient signals instead.
+
+**`waitForStepComplete()` — five completion signals (checked every ~5s):**
+
+| # | Signal | Notes |
+|---|---|---|
+| 1 | `#frame{N}` has `.FrameComplete` | Skipped when `wasAlreadyComplete=true` |
+| 2 | `.FrameRight` has `.FrameHighlight` | Edgenuity flashes this after server confirms |
+| 3 | `#frameProgress` shows `current > stepNumber` | Auto-advance by Edgenuity |
+| 4 | Video time display within 3s of total | Read from `#frame_video_controls` if present |
+| 5 | `directInstructionVideoDone` flag | Set by `postMessage(VIDEO_DONE)` from content frame |
+
+**Cross-frame message types (all use `postMessage(…, '*')`):**
+
+| Type | Sender → Receiver | When |
+|---|---|---|
+| `SILENTSTUDY_LOCK_NEXT` | Stage → Top | `runActivityCycle()` detects Direct Instruction (before humanDelay) |
+| `SILENTSTUDY_UNLOCK_NEXT` | Stage → Top | `runActivityCycle()` `finally` block — always sent even on error |
+| `SILENTSTUDY_VIDEO_DONE` | Content → Stage | `skipVideo()` after video seeks to end |
+
+**Key functions:**
+
+| Function | Description |
+|---|---|
+| `isDirectInstruction()` | Checks for `.FramesList .FrameRight` in DOM |
+| `parseFrameProgress()` | Reads `#frameProgress` → `{ current, total }` |
+| `readVideoTimes()` | Reads `#frame_video_controls` → `{ current, total }` in seconds |
+| `handleDirectInstruction()` | Main step loop; coordinates waits and FrameRight clicks |
+| `waitForStepComplete(step, ms, wasAlreadyComplete)` | Polls all 5 signals |
+| `skipVideo(video)` | Seeks video to end in 20s chunks; posts `VIDEO_DONE` to parent |
 
 ### 5.4 popup.js / popup.html
 
@@ -566,6 +644,13 @@ const backendBase = 'https://your-production-domain.com';
 - Check the Edgenuity URL matches `*.edgenuity.com`, `*.edgex.com`, or `*.k12.com`
 - Open DevTools in the Edgenuity tab → Console → look for `[SilentStudy]` logs
 - Open `chrome://extensions` → Silent Study → **Service Worker** → Inspect → check for errors in `background.js`
+
+### Bot skips Direct Instruction video without watching it
+
+This is caused by Edgenuity pre-setting `FrameComplete` from server-side state. The fix is already in place (`wasAlreadyComplete` + `SILENTSTUDY_VIDEO_DONE` signal). If it still skips:
+- Open DevTools on the stage frame (`ContentViewers/FrameChain` URL) and check for `[SilentStudy]` logs
+- Verify `NEXT_ACTIVITY_LOCKED` appears in the **top frame** console before `DIRECT INSTRUCTION DETECTED` in the stage frame
+- If VIDEO_DONE never fires, check that `skipVideo()` is running in the content frame (`media.edgenuity.com/contentengine/frames/...`) — open DevTools for that frame and look for `VIDEO_SKIP_START`
 
 ### MutationObserver firing infinitely
 - This is handled by `pauseActivityObserver()` / `resumeActivityObserver()` in `content_script.js`

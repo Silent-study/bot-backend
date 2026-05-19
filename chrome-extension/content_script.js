@@ -114,6 +114,10 @@ async function skipVideo(video) {
                 video.dispatchEvent(new Event('ended', { bubbles: true }));
                 clearInterval(interval);
                 log('VIDEO_SKIP_DONE');
+                // Notify the stage frame (our parent) that this step's video is done.
+                // This lets handleDirectInstruction() exit waitForStepComplete() early
+                // instead of waiting out the full timeout.
+                if (!IS_TOP_FRAME) window.parent.postMessage({ type: 'SILENTSTUDY_VIDEO_DONE' }, '*');
                 resolve();
                 return;
             }
@@ -404,11 +408,251 @@ function clickDone() {
     return false;
 }
 
+// ─── Activity Frame: Direct Instruction (FrameChain multi-step video) ──────────
+
+// Detects whether the current frame is a FrameChain stage frame
+// (has the .FramesList navigation bar with .FrameRight step buttons)
+function isDirectInstruction() {
+    return !!(document.querySelector('.FramesList') && document.querySelector('.FramesList .FrameRight'));
+}
+
+// Parse "N of M" from #frameProgress and return { current, total } or null
+function parseFrameProgress() {
+    const el = document.querySelector('#frameProgress, em#frameProgress');
+    if (!el) return null;
+    const m = (el.innerText || '').match(/(\d+)\s*of\s*(\d+)/i);
+    if (!m) return null;
+    return { current: parseInt(m[1], 10), total: parseInt(m[2], 10) };
+}
+
+// Read both current position and total duration (seconds) from the stage frame's
+// video controls UI.  The time display typically shows "0:32 / 9:56".
+// Returns { current, total } or null if no controls are found.
+function readVideoTimes() {
+    const toSecs = m => m[3]
+        ? parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3])
+        : parseInt(m[1]) * 60 + parseInt(m[2]);
+    const containers = [
+        document.getElementById('frame_video_controls'),
+        document.getElementById('frameVideoControls'),
+        document.getElementById('frameNav'),
+    ];
+    for (const container of containers) {
+        if (!container) continue;
+        // Prefer dedicated time elements
+        const timeEls = container.querySelectorAll('.Time, .time, [class*="time"], [class*="Time"]');
+        for (const el of timeEls) {
+            const matches = [...(el.innerText || '').matchAll(/(\d{1,2}):(\d{2})(?::(\d{2}))?/g)];
+            if (matches.length >= 2) {
+                const cur = toSecs(matches[0]);
+                const tot = toSecs(matches[matches.length - 1]);
+                if (tot > 0) return { current: cur, total: tot };
+            }
+            // Single time value — treat as total only
+            if (matches.length === 1) {
+                const tot = toSecs(matches[0]);
+                if (tot > 0) return { current: 0, total: tot };
+            }
+        }
+        // Fall back to raw container text
+        const rawMatches = [...(container.innerText || '').matchAll(/(\d{1,2}):(\d{2})(?::(\d{2}))?/g)];
+        if (rawMatches.length >= 2) {
+            const cur = toSecs(rawMatches[0]);
+            const tot = toSecs(rawMatches[rawMatches.length - 1]);
+            if (tot > 0) return { current: cur, total: tot };
+        }
+        if (rawMatches.length === 1) {
+            const tot = toSecs(rawMatches[0]);
+            if (tot > 0) return { current: 0, total: tot };
+        }
+    }
+    return null;
+}
+
+// Click the play button in the stage frame's video control overlay if the video is paused.
+// Returns true if a play button was found and clicked.
+function ensureVideoPlaying() {
+    const candidates = [
+        '#frame_video_controls .Play',
+        '#frameVideoControls .Play',
+        '.IpadPlay',
+        '#frameArea .Play',
+        '.Play',
+    ];
+    for (const s of candidates) {
+        try {
+            const el = document.querySelector(s);
+            if (el && el.offsetParent !== null) {
+                humanClick(el);
+                return true;
+            }
+        } catch (_) { }
+    }
+    return false;
+}
+
+// Returns true if the stage frame video controls show a Play button (video is paused/stopped).
+function isVideoPaused() {
+    const playBtn = document.querySelector(
+        '#frame_video_controls .Play, #frameVideoControls .Play, .IpadPlay, #frameArea .Play'
+    );
+    return !!(playBtn && playBtn.offsetParent !== null);
+}
+
+// Poll until step N is confirmed complete or timeout elapses.
+// wasAlreadyComplete: true when FrameComplete was pre-set at watch-start
+//   (Edgenuity sets it from server state even if video was never watched today).
+//   In that case we skip the FrameComplete DOM check and rely on other signals.
+// Returns true on confirmed completion, false on timeout.
+async function waitForStepComplete(stepNumber, timeoutMs, wasAlreadyComplete) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        await humanDelay(4000, 5000);
+
+        // Signal 1: FrameComplete transition — only trust if it wasn't already set
+        // when we started (pre-set = from a prior session, not this watch).
+        if (!wasAlreadyComplete) {
+            const frameEl = document.querySelector(`#frame${stepNumber}`);
+            if (frameEl && frameEl.classList.contains('FrameComplete')) return true;
+        }
+
+        // Signal 2: .FrameRight got FrameHighlight (Edgenuity flashes it on completion)
+        const rightBtn = document.querySelector('.FramesList .FrameRight, .FramesList li.FrameRight');
+        if (rightBtn && rightBtn.classList.contains('FrameHighlight')) return true;
+
+        // Signal 3: #frameProgress already advanced (step auto-clicked somehow)
+        const prog = parseFrameProgress();
+        if (prog && prog.current > stepNumber) return true;
+
+        // Signal 4: video time display shows we're within 3 s of the end
+        const times = readVideoTimes();
+        if (times && times.total > 0 && (times.total - times.current) <= 3) return true;
+
+        // Signal 5: content frame's skipVideo() posted SILENTSTUDY_VIDEO_DONE
+        if (directInstructionVideoDone) {
+            directInstructionVideoDone = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+async function handleDirectInstruction() {
+    log('DIRECT_INSTRUCTION_DETECTED');
+
+    const MAX_STEPS = 30;        // safety cap — no lesson has 30+ steps
+    const MAX_WAIT_PER_STEP = 25 * 60 * 1000;  // 25 min absolute ceiling per step
+    const DEFAULT_DURATION_S = 120;  // fall-back if we can't read video length
+
+    for (let attempt = 0; attempt < MAX_STEPS; attempt++) {
+        await humanDelay(1500, 2500);
+
+        const prog = parseFrameProgress();
+        if (!prog) {
+            log('DIRECT_INSTRUCTION_NO_PROGRESS');
+            break;
+        }
+
+        const { current, total } = prog;
+
+        // All steps finished — done
+        if (current > total) {
+            log('DIRECT_INSTRUCTION_COMPLETE', 'all ' + total + ' steps done');
+            break;
+        }
+
+        // Note whether FrameComplete was pre-set before we started watching.
+        // Edgenuity persists completion state server-side and re-applies it to
+        // the DOM on load, even if the user never finished the video today.
+        // When pre-set we skip the FrameComplete early-exit and rely on time
+        // signals instead, so the bot actually watches the video.
+        const wasAlreadyComplete = !!(document.querySelector(`#frame${current}.FrameComplete`));
+
+        log('DIRECT_INSTRUCTION_STEP_START', current + ' of ' + total +
+            (wasAlreadyComplete ? ' (pre-marked — watching anyway)' : ''));
+
+        // ── Give the content iframe a moment to load ───────────────────────
+        await humanDelay(2000, 3000);
+
+        // ── Click play if the video loaded in a paused state ───────────────
+        // Edgenuity videos start paused; the user (or bot) must press play.
+        if (ensureVideoPlaying()) {
+            log('DIRECT_INSTRUCTION_PLAY_CLICKED', 'step ' + current);
+        } else {
+            log('DIRECT_INSTRUCTION_PLAY_NOT_FOUND', 'step ' + current);
+        }
+
+        // ── Read video times (current position + total duration) ───────────
+        let videoTimes = readVideoTimes();
+
+        // Controls may not update instantly — retry once
+        if (!videoTimes || !videoTimes.total) {
+            await humanDelay(3000, 4000);
+            if (ensureVideoPlaying()) {
+                log('DIRECT_INSTRUCTION_PLAY_RETRY', 'step ' + current);
+            }
+            videoTimes = readVideoTimes();
+        }
+
+        const totalS = (videoTimes && videoTimes.total > 0) ? videoTimes.total : DEFAULT_DURATION_S;
+        const currentS = (videoTimes && videoTimes.current >= 0) ? videoTimes.current : 0;
+        const remainingS = Math.max(totalS - currentS, 5);
+
+        if (!videoTimes || !videoTimes.total) {
+            log('DIRECT_INSTRUCTION_DURATION_FALLBACK', totalS + 's default');
+        } else {
+            log('DIRECT_INSTRUCTION_VIDEO_TIMES',
+                currentS + 's / ' + totalS + 's (~' + remainingS + 's remaining)');
+        }
+
+        log('DIRECT_INSTRUCTION_WAITING', 'step ' + current + ' ~' + remainingS + 's');
+
+        // ── Poll while the video plays ─────────────────────────────────────
+        // timeout = remaining video time + 30 s buffer (not the full duration).
+        const stepDone = await waitForStepComplete(
+            current,
+            Math.min((remainingS + 30) * 1000, MAX_WAIT_PER_STEP),
+            wasAlreadyComplete
+        );
+
+        if (stepDone) {
+            log('DIRECT_INSTRUCTION_STEP_DONE', current + ' of ' + total);
+        } else {
+            log('DIRECT_INSTRUCTION_STEP_TIMEOUT', 'step ' + current + ' — trying anyway');
+        }
+
+        // ── All steps complete? ───────────────────────────────────────────────
+        if (current >= total) {
+            log('DIRECT_INSTRUCTION_COMPLETE', 'all ' + total + ' steps done');
+            break;
+        }
+
+        // ── Click the ► (FrameRight) button to load the next step ────────────
+        // Try <a> inside the <li> first, then the <li> itself (onclick on the li)
+        const rightA = document.querySelector('.FramesList .FrameRight a, .FramesList li.FrameRight a');
+        const rightLi = document.querySelector('.FramesList .FrameRight, .FramesList li.FrameRight');
+        const target = rightA || rightLi;
+
+        if (target && target.offsetParent !== null) {
+            humanClick(target);
+            log('DIRECT_INSTRUCTION_NEXT_CLICK', current + ' → ' + (current + 1));
+        } else {
+            log('DIRECT_INSTRUCTION_NEXT_MISSING', 'step ' + current);
+        }
+
+        // Wait for the next step frame to load before looping
+        await humanDelay(4000, 6000);
+    }
+}
+
 // ─── Activity Frame: Main Cycle ───────────────────────────────────────────────
 
 let activityObserver = null;
 let activityDebounce = null;
 let isRunningCycle = false;
+// Toggled by postMessage from the content frame inside #iFramePreview when
+// skipVideo() completes.  Read and reset by waitForStepComplete() (Signal 5).
+let directInstructionVideoDone = false;
 
 async function runActivityCycle() {
     if (isRunningCycle) return;
@@ -416,26 +660,42 @@ async function runActivityCycle() {
 
     pauseActivityObserver();
 
+    // Send the lock to the top frame BEFORE humanDelay so it arrives while the
+    // top frame is still in its own debounce/humanDelay, preventing a premature
+    // Next Activity click on activities that are pre-marked complete server-side.
+    const isDI = isDirectInstruction();
+    if (isDI) window.top.postMessage({ type: 'SILENTSTUDY_LOCK_NEXT' }, '*');
+
     try {
         await humanDelay(1500, 3000);
 
-        // 1. Video
-        const video = document.querySelector('video');
-        if (video && !video.ended && video.readyState >= 2) {
-            await skipVideo(video);
-            await humanDelay(1000, 2000);
-        }
-
-        // 2. Vocab
-        if (document.querySelector('.word-textbox')) {
-            await handleVocab();
-            await humanDelay(1000, 2000);
+        // 0. Direct Instruction — FrameChain multi-step video activity
+        //    Detected by presence of .FramesList navigation in the stage frame.
+        //    Must be checked BEFORE video/vocab/question to avoid mis-handling.
+        if (isDI) {
+            await handleDirectInstruction();
         } else {
-            // 3. Questions
-            await handleQuestion();
+            // 1. Video
+            const video = document.querySelector('video');
+            if (video && !video.ended && video.readyState >= 2) {
+                await skipVideo(video);
+                await humanDelay(1000, 2000);
+            }
+
+            // 2. Vocab
+            if (document.querySelector('.word-textbox')) {
+                await handleVocab();
+                await humanDelay(1000, 2000);
+            } else {
+                // 3. Questions
+                await handleQuestion();
+            }
         }
     } catch (err) {
         console.error('[SilentStudy] Activity cycle error:', err);
+    } finally {
+        // Always unlock, even on error, so the top frame isn't stuck.
+        if (isDI) window.top.postMessage({ type: 'SILENTSTUDY_UNLOCK_NEXT' }, '*');
     }
 
     isRunningCycle = false;
@@ -479,6 +739,14 @@ async function initActivityFrame() {
 
     resumeActivityObserver();
 
+    // Receive SILENTSTUDY_VIDEO_DONE from the content frame inside #iFramePreview.
+    // skipVideo() posts this when it finishes so waitForStepComplete() can exit early.
+    window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'SILENTSTUDY_VIDEO_DONE') {
+            directInstructionVideoDone = true;
+        }
+    });
+
     // Also respond to BOT_STATE_CHANGED from background
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.type === 'BOT_STATE_CHANGED') {
@@ -518,6 +786,10 @@ function handleInternalSteps() {
 }
 
 function clickNextActivity() {
+    if (nextActivityLocked) {
+        log('NEXT_ACTIVITY_LOCKED', 'activity frame busy — skipping');
+        return false;
+    }
     const candidates = ['a.footnav.goRight', '.footnav.goRight', 'a[class*="goRight"]'];
     for (const s of candidates) {
         const el = document.querySelector(s);
@@ -533,6 +805,8 @@ function clickNextActivity() {
 let topObserver = null;
 let topDebounce = null;
 let isRunningTop = false;
+// Set by activity frames via postMessage to block premature Next Activity clicks.
+let nextActivityLocked = false;
 
 async function runTopCycle() {
     if (isRunningTop) return;
@@ -561,6 +835,22 @@ async function initTopFrame() {
     }
 
     log('TOP_FRAME_READY');
+
+    // Receive LOCK/UNLOCK from activity frames (stage frame during DirectInstruction).
+    // Must be set up immediately — before any humanDelay — so signals sent by the
+    // stage frame before our first runTopCycle() aren't missed.
+    window.addEventListener('message', (event) => {
+        if (!event.data || typeof event.data.type !== 'string') return;
+        if (event.data.type === 'SILENTSTUDY_LOCK_NEXT') {
+            nextActivityLocked = true;
+            log('NEXT_ACTIVITY_LOCKED', 'activity frame started');
+        } else if (event.data.type === 'SILENTSTUDY_UNLOCK_NEXT') {
+            nextActivityLocked = false;
+            log('NEXT_ACTIVITY_UNLOCKED', 'activity frame done');
+            // Activity frame finished — trigger a top cycle now to click Next.
+            if (!isRunningTop) runTopCycle();
+        }
+    });
 
     // Run once after page settles
     await humanDelay(4000, 7000);
