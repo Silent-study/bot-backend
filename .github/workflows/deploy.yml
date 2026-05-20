@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Backend Deployment
 
 on:
   push:
@@ -7,13 +7,21 @@ on:
 
 jobs:
   deploy:
+    name: Deploy Backend to VPS
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
+      - name: "📥 Step 1 - Checkout Latest Code"
         uses: actions/checkout@v3
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@master
+      - name: "📦 Step 2 - Install Dependencies"
+        run: |
+          echo "Installing backend dependencies..."
+          npm install
+          echo "✅ Dependencies installed successfully"
+
+      - name: "🔄 Step 3 - Deploy to VPS"
+        uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -21,6 +29,9 @@ jobs:
           script: |
             cd /var/www/silentstudy/backend
             git pull origin main
-            npm install --production
-            pm2 restart silent-study-api || pm2 start server.js --name "silent-study-api"
-            echo "✅ Backend Deployment Successful!"
+            npm install
+            pm2 restart backend
+            echo "✅ Backend is live!"
+
+      - name: "🎉 Step 4 - Deployment Complete"
+        run: echo "🎉 Backend successfully deployed to silentstudy.net"
