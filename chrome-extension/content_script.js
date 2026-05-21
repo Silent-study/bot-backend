@@ -378,6 +378,17 @@ async function handleQuestion() {
         }
     }
 
+    // No supported question type found — report visible inputs so a dev can
+    // identify and implement a handler for this activity.
+    const visibleInputs = [
+        document.querySelector('input[type="radio"]:not([style*="display:none"])') ? 'radio' : null,
+        document.querySelector('input[type="checkbox"]:not([style*="display:none"])') ? 'checkbox' : null,
+        document.querySelector('select') ? 'select' : null,
+        document.querySelector('textarea') ? 'textarea' : null,
+        document.querySelector('[contenteditable="true"]') ? 'contenteditable' : null,
+        window.CKEDITOR ? 'ckeditor' : null,
+    ].filter(Boolean).join(', ') || 'none';
+    log('QUESTION_UNHANDLED', 'visible inputs on page: ' + visibleInputs);
     return false;
 }
 
