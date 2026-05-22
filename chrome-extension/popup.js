@@ -200,6 +200,8 @@ function loadExtConfig() {
         })
             .then(r => r.json())
             .then(data => {
+                // Cache config locally so content script can read it
+                if (data.config) chrome.storage.local.set({ botConfig: data.config });
                 // Lock if server says active OR local toggle is on
                 renderExtConfig(data.config, data.botActive || botEnabled === true);
             })
@@ -288,6 +290,8 @@ document.getElementById('ext-save-config').addEventListener('click', () => {
             .then(data => {
                 saveMsg.classList.remove('hidden');
                 if (data.ok) {
+                    // Update cached config so content script picks up new settings immediately
+                    chrome.storage.local.set({ botConfig: body });
                     saveMsg.textContent = '✓ Saved';
                     saveMsg.className = 'ext-save-msg success';
                 } else {

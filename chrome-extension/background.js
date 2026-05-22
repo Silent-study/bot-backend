@@ -30,6 +30,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + data.token },
                         body: JSON.stringify({ active: next }),
                     }).catch(() => { });
+                    // When toggling ON, refresh cached config so content script has latest settings
+                    if (next) {
+                        fetch(API_BASE + '/api/config', {
+                            headers: { 'Authorization': 'Bearer ' + data.token },
+                        })
+                            .then(r => r.json())
+                            .then(cfg => { if (cfg.config) chrome.storage.local.set({ botConfig: cfg.config }); })
+                            .catch(() => { });
+                    }
                 }
             });
         });
@@ -128,6 +137,14 @@ async function handleLogin(email, password) {
             addons: data.addons || [],
             botEnabled: true,
         });
+
+        // Cache bot config so content script can read it immediately
+        fetch(API_BASE + '/api/config', {
+            headers: { 'Authorization': 'Bearer ' + data.token },
+        })
+            .then(r => r.json())
+            .then(cfg => { if (cfg.config) chrome.storage.local.set({ botConfig: cfg.config }); })
+            .catch(() => { });
 
         // Mark bot as inactive on server at login (fresh start)
         fetch(API_BASE + '/api/bot-status', {

@@ -70,6 +70,20 @@ function checkAuth() {
     });
 }
 
+// Read cached bot config from local storage; defaults mirror server defaults
+function getConfig() {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['botConfig'], (data) => {
+            const defaults = {
+                autoAdvance: true, autoSubmit: true, autoAssessment: true,
+                assessmentAccuracy: 75, autoAssignment: true, autoWrite: true,
+                autoProject: true, autoVocab: true,
+            };
+            resolve(Object.assign({}, defaults, data.botConfig || {}));
+        });
+    });
+}
+
 // Extract question text from the current frame body, stripping noise
 function extractQuestionText() {
     const body = document.body;
@@ -194,7 +208,7 @@ async function handleVocab() {
 // Mark answered to prevent re-answering same question after MutationObserver fires
 let lastAnsweredHash = '';
 
-async function handleQuestion() {
+async function handleQuestion(cfg) {
     const questionText = extractQuestionText();
     if (!questionText || questionText.length < 10) return false;
 
@@ -203,7 +217,7 @@ async function handleQuestion() {
     if (hash === lastAnsweredHash) return false;
 
     // ── CKEditor (essays / extended responses) ──────────────────────────────────
-    if (window.CKEDITOR) {
+    if (cfg.autoWrite && window.CKEDITOR) {
         const instances = window.CKEDITOR.instances || {};
         const names = Object.keys(instances);
         if (names.length > 0) {
@@ -215,171 +229,237 @@ async function handleQuestion() {
                 lastAnsweredHash = hash;
                 log('ESSAY_ANSWERED');
                 await humanDelay(2000, 4000);
-                clickDone();
+                if (cfg.autoSubmit) clickDone();
                 return true;
             }
         }
     }
 
     // ── contenteditable (non-CKEditor rich text) ─────────────────────────────────
-    const editables = [...document.querySelectorAll('[contenteditable="true"]')]
-        .filter(el => el.offsetParent !== null && el.innerText.trim().length === 0);
-    if (editables.length > 0) {
-        const { answer, error } = await solve(questionText, [], 'essay');
-        if (!error && answer) {
-            editables[0].focus();
-            editables[0].innerText = answer;
-            editables[0].dispatchEvent(new Event('input', { bubbles: true }));
-            editables[0].dispatchEvent(new Event('change', { bubbles: true }));
-            lastAnsweredHash = hash;
-            log('CONTENTEDITABLE_ANSWERED');
-            await humanDelay(2000, 4000);
-            clickDone();
-            return true;
+    if (cfg.autoWrite) {
+        const editables = [...document.querySelectorAll('[contenteditable="true"]')]
+            .filter(el => el.offsetParent !== null && el.innerText.trim().length === 0);
+        if (editables.length > 0) {
+            const { answer, error } = await solve(questionText, [], 'essay');
+            if (!error && answer) {
+                editables[0].focus();
+                editables[0].innerText = answer;
+                editables[0].dispatchEvent(new Event('input', { bubbles: true }));
+                editables[0].dispatchEvent(new Event('change', { bubbles: true }));
+                lastAnsweredHash = hash;
+                log('CONTENTEDITABLE_ANSWERED');
+                await humanDelay(2000, 4000);
+                if (cfg.autoSubmit) clickDone();
+                return true;
+            }
         }
     }
 
     // ── Textarea (open response / short answer) ───────────────────────────────────
-    const textareas = [...document.querySelectorAll('textarea')]
-        .filter(el => el.offsetParent !== null && el.value.trim().length === 0);
-    if (textareas.length > 0) {
-        const { answer, error } = await solve(questionText, [], 'essay');
-        if (!error && answer) {
-            textareas[0].focus();
-            textareas[0].value = answer;
-            textareas[0].dispatchEvent(new Event('input', { bubbles: true }));
-            textareas[0].dispatchEvent(new Event('change', { bubbles: true }));
-            lastAnsweredHash = hash;
-            log('TEXTAREA_ANSWERED');
-            await humanDelay(2000, 4000);
-            clickDone();
-            return true;
-        }
-    }
-
-    // ── Checkbox (multi-select MCQ) ───────────────────────────────────────────────
-    const checkboxes = [...document.querySelectorAll('input[type="checkbox"]')]
-        .filter(el => el.offsetParent !== null);
-    if (checkboxes.length > 0) {
-        const options = checkboxes
-            .map(cb => (cb.closest('label') ? cb.closest('label').innerText : (cb.nextElementSibling ? cb.nextElementSibling.innerText : '')).trim())
-            .filter(Boolean);
-
-        if (options.length > 0) {
-            const { answer, error } = await solve(questionText, options, 'checkbox');
+    if (cfg.autoWrite) {
+        const textareas = [...document.querySelectorAll('textarea')]
+            .filter(el => el.offsetParent !== null && el.value.trim().length === 0);
+        if (textareas.length > 0) {
+            const { answer, error } = await solve(questionText, [], 'essay');
             if (!error && answer) {
-                const answers = answer.split(/[,;]/).map(a => a.trim().toLowerCase());
-                let checked = false;
-
-                checkboxes.forEach((cb, i) => {
-                    const opt = (options[i] || '').toLowerCase();
-                    if (answers.some(a => opt.includes(a) || a.includes(opt))) {
-                        cb.checked = true;
-                        cb.dispatchEvent(new Event('change', { bubbles: true }));
-                        humanClick(cb);
-                        checked = true;
-                    }
-                });
-
-                if (checked) {
-                    lastAnsweredHash = hash;
-                    log('CHECKBOX_ANSWERED', answer);
-                    await humanDelay(1000, 2000);
-                    clickDone();
-                    return true;
-                }
+                textareas[0].focus();
+                textareas[0].value = answer;
+                textareas[0].dispatchEvent(new Event('input', { bubbles: true }));
+                textareas[0].dispatchEvent(new Event('change', { bubbles: true }));
+                lastAnsweredHash = hash;
+                log('TEXTAREA_ANSWERED');
+                await humanDelay(2000, 4000);
+                if (cfg.autoSubmit) clickDone();
+                return true;
             }
         }
     }
 
-    // ── Radio (standard MCQ) ──────────────────────────────────────────────────────
-    const radios = [...document.querySelectorAll('input[type="radio"]')]
-        .filter(el => el.offsetParent !== null);
-    if (radios.length > 0) {
-        // Skip if already answered
-        if (radios.some(r => r.checked)) return false;
+    // ── Checkbox / Radio / Dropdown — gated by autoAssessment ───────────────────
+    if (cfg.autoAssessment) {
+        // ── Checkbox (multi-select MCQ) ──────────────────────────────────────────
+        const checkboxes = [...document.querySelectorAll('input[type="checkbox"]')]
+            .filter(el => el.offsetParent !== null);
+        if (checkboxes.length > 0) {
+            const options = checkboxes
+                .map(cb => (cb.closest('label') ? cb.closest('label').innerText : (cb.nextElementSibling ? cb.nextElementSibling.innerText : '')).trim())
+                .filter(Boolean);
 
-        const options = radios.map(r => {
-            const label = r.closest('label');
-            const sibling = r.nextElementSibling;
-            return (label ? label.innerText : (sibling ? sibling.innerText : '')).trim();
-        });
+            if (options.length > 0) {
+                const { answer, error } = await solve(questionText, options, 'checkbox');
+                if (!error && answer) {
+                    const shouldBeCorrect = Math.random() * 100 < cfg.assessmentAccuracy;
+                    const answers = answer.split(/[,;]/).map(a => a.trim().toLowerCase());
+                    let checked = false;
 
-        const filtered = options.filter(Boolean);
-        if (filtered.length > 0) {
-            const { answer, error } = await solve(questionText, filtered, 'mcq');
-            if (!error && answer) {
-                const answerLower = answer.toLowerCase();
-                let picked = false;
+                    if (shouldBeCorrect) {
+                        checkboxes.forEach((cb, i) => {
+                            const opt = (options[i] || '').toLowerCase();
+                            if (answers.some(a => opt.includes(a) || a.includes(opt))) {
+                                cb.checked = true;
+                                cb.dispatchEvent(new Event('change', { bubbles: true }));
+                                humanClick(cb);
+                                checked = true;
+                            }
+                        });
+                    } else {
+                        // Intentionally wrong: check non-matching options
+                        const wrongBoxes = checkboxes.filter((cb, i) => {
+                            const opt = (options[i] || '').toLowerCase();
+                            return !answers.some(a => opt.includes(a) || a.includes(opt));
+                        });
+                        const toCheck = wrongBoxes.length > 0
+                            ? wrongBoxes.slice(0, Math.ceil(checkboxes.length / 2))
+                            : [checkboxes[0]];
+                        toCheck.forEach(cb => {
+                            cb.checked = true;
+                            cb.dispatchEvent(new Event('change', { bubbles: true }));
+                            humanClick(cb);
+                            checked = true;
+                        });
+                    }
 
-                for (let i = 0; i < radios.length; i++) {
-                    const optLower = (options[i] || '').toLowerCase();
-                    if (optLower.includes(answerLower) || answerLower.includes(optLower)) {
-                        radios[i].checked = true;
-                        radios[i].dispatchEvent(new Event('change', { bubbles: true }));
-                        humanClick(radios[i]);
-                        picked = true;
+                    if (checked) {
                         lastAnsweredHash = hash;
-                        log('MCQ_ANSWERED', answer);
-                        await humanDelay(900, 1800);
-                        clickDone();
+                        log(shouldBeCorrect ? 'CHECKBOX_ANSWERED' : 'CHECKBOX_INTENTIONAL_MISS',
+                            shouldBeCorrect ? answer : cfg.assessmentAccuracy + '%');
+                        await humanDelay(1000, 2000);
+                        if (cfg.autoSubmit) clickDone();
                         return true;
                     }
                 }
-
-                // Fallback: pick first radio if AI answer doesn't match any option exactly
-                if (!picked) {
-                    radios[0].checked = true;
-                    radios[0].dispatchEvent(new Event('change', { bubbles: true }));
-                    humanClick(radios[0]);
-                    lastAnsweredHash = hash;
-                    log('MCQ_FALLBACK', 'answer: ' + answer + ' | option: ' + (options[0] || '?'));
-                    await humanDelay(900, 1800);
-                    clickDone();
-                    return true;
-                }
             }
         }
-    }
 
-    // ── Dropdown (select elements) ────────────────────────────────────────────────
-    const selects = [...document.querySelectorAll('select')]
-        .filter(el => el.offsetParent !== null);
-    if (selects.length > 0) {
-        let answered = false;
+        // ── Radio (standard MCQ) ─────────────────────────────────────────────────
+        const radios = [...document.querySelectorAll('input[type="radio"]')]
+            .filter(el => el.offsetParent !== null);
+        if (radios.length > 0) {
+            if (radios.some(r => r.checked)) return false;
 
-        for (const sel of selects) {
-            const options = [...sel.options]
-                .map(o => o.text.trim())
-                .filter(o => o && o !== 'Select...' && o !== '-' && o !== '');
+            const options = radios.map(r => {
+                const label = r.closest('label');
+                const sibling = r.nextElementSibling;
+                return (label ? label.innerText : (sibling ? sibling.innerText : '')).trim();
+            });
 
-            if (options.length === 0) continue;
+            const filtered = options.filter(Boolean);
+            if (filtered.length > 0) {
+                const { answer, error } = await solve(questionText, filtered, 'mcq');
+                if (!error && answer) {
+                    const shouldBeCorrect = Math.random() * 100 < cfg.assessmentAccuracy;
+                    const answerLower = answer.toLowerCase();
 
-            const { answer, error } = await solve(questionText, options, 'dropdown');
-            if (!error && answer) {
-                const answerLower = answer.toLowerCase();
-                for (const opt of sel.options) {
-                    if (opt.text.toLowerCase().includes(answerLower) || answerLower.includes(opt.text.toLowerCase())) {
-                        sel.value = opt.value;
-                        sel.dispatchEvent(new Event('change', { bubbles: true }));
-                        answered = true;
-                        break;
+                    if (shouldBeCorrect) {
+                        let picked = false;
+                        for (let i = 0; i < radios.length; i++) {
+                            const optLower = (options[i] || '').toLowerCase();
+                            if (optLower.includes(answerLower) || answerLower.includes(optLower)) {
+                                radios[i].checked = true;
+                                radios[i].dispatchEvent(new Event('change', { bubbles: true }));
+                                humanClick(radios[i]);
+                                picked = true;
+                                lastAnsweredHash = hash;
+                                log('MCQ_ANSWERED', answer);
+                                await humanDelay(900, 1800);
+                                if (cfg.autoSubmit) clickDone();
+                                return true;
+                            }
+                        }
+                        if (!picked) {
+                            radios[0].checked = true;
+                            radios[0].dispatchEvent(new Event('change', { bubbles: true }));
+                            humanClick(radios[0]);
+                            lastAnsweredHash = hash;
+                            log('MCQ_FALLBACK', 'answer: ' + answer + ' | option: ' + (options[0] || '?'));
+                            await humanDelay(900, 1800);
+                            if (cfg.autoSubmit) clickDone();
+                            return true;
+                        }
+                    } else {
+                        // Intentionally wrong: pick first option that does NOT match AI answer
+                        let wrongPicked = false;
+                        for (let i = 0; i < radios.length; i++) {
+                            const optLower = (options[i] || '').toLowerCase();
+                            if (!optLower.includes(answerLower) && !answerLower.includes(optLower)) {
+                                radios[i].checked = true;
+                                radios[i].dispatchEvent(new Event('change', { bubbles: true }));
+                                humanClick(radios[i]);
+                                wrongPicked = true;
+                                lastAnsweredHash = hash;
+                                log('MCQ_INTENTIONAL_MISS', cfg.assessmentAccuracy + '%');
+                                await humanDelay(900, 1800);
+                                if (cfg.autoSubmit) clickDone();
+                                return true;
+                            }
+                        }
+                        if (!wrongPicked) {
+                            const fi = radios.length > 1 ? radios.length - 1 : 0;
+                            radios[fi].checked = true;
+                            radios[fi].dispatchEvent(new Event('change', { bubbles: true }));
+                            humanClick(radios[fi]);
+                            lastAnsweredHash = hash;
+                            log('MCQ_INTENTIONAL_MISS_FALLBACK', cfg.assessmentAccuracy + '%');
+                            await humanDelay(900, 1800);
+                            if (cfg.autoSubmit) clickDone();
+                            return true;
+                        }
                     }
                 }
             }
         }
 
-        if (answered) {
-            lastAnsweredHash = hash;
-            log('DROPDOWN_ANSWERED');
-            await humanDelay(1000, 2000);
-            clickDone();
-            return true;
+        // ── Dropdown (select elements) ───────────────────────────────────────────
+        const selects = [...document.querySelectorAll('select')]
+            .filter(el => el.offsetParent !== null);
+        if (selects.length > 0) {
+            let answered = false;
+            const shouldBeCorrect = Math.random() * 100 < cfg.assessmentAccuracy;
+
+            for (const sel of selects) {
+                const options = [...sel.options]
+                    .map(o => o.text.trim())
+                    .filter(o => o && o !== 'Select...' && o !== '-' && o !== '');
+
+                if (options.length === 0) continue;
+
+                const { answer, error } = await solve(questionText, options, 'dropdown');
+                if (!error && answer) {
+                    const answerLower = answer.toLowerCase();
+                    if (shouldBeCorrect) {
+                        for (const opt of sel.options) {
+                            if (opt.text.toLowerCase().includes(answerLower) || answerLower.includes(opt.text.toLowerCase())) {
+                                sel.value = opt.value;
+                                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                answered = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        for (const opt of sel.options) {
+                            if (!opt.text.toLowerCase().includes(answerLower) && !answerLower.includes(opt.text.toLowerCase())) {
+                                sel.value = opt.value;
+                                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                answered = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (answered) {
+                lastAnsweredHash = hash;
+                log(shouldBeCorrect ? 'DROPDOWN_ANSWERED' : 'DROPDOWN_INTENTIONAL_MISS',
+                    shouldBeCorrect ? '' : cfg.assessmentAccuracy + '%');
+                await humanDelay(1000, 2000);
+                if (cfg.autoSubmit) clickDone();
+                return true;
+            }
         }
     }
 
-    // No supported question type found — report visible inputs so a dev can
-    // identify and implement a handler for this activity.
+    // No supported question type found (or gated off by config)
     const visibleInputs = [
         document.querySelector('input[type="radio"]:not([style*="display:none"])') ? 'radio' : null,
         document.querySelector('input[type="checkbox"]:not([style*="display:none"])') ? 'checkbox' : null,
@@ -680,26 +760,40 @@ async function runActivityCycle() {
     try {
         await humanDelay(1500, 3000);
 
+        const cfg = await getConfig();
+
         // 0. Direct Instruction — FrameChain multi-step video activity
         //    Detected by presence of .FramesList navigation in the stage frame.
         //    Must be checked BEFORE video/vocab/question to avoid mis-handling.
         if (isDI) {
-            await handleDirectInstruction();
+            if (cfg.autoAssignment) {
+                await handleDirectInstruction();
+            } else {
+                log('CONFIG_SKIP', 'autoAssignment off — skipping direct instruction');
+            }
         } else {
             // 1. Video
             const video = document.querySelector('video');
             if (video && !video.ended && video.readyState >= 2) {
-                await skipVideo(video);
-                await humanDelay(1000, 2000);
+                if (cfg.autoAssignment) {
+                    await skipVideo(video);
+                    await humanDelay(1000, 2000);
+                } else {
+                    log('CONFIG_SKIP', 'autoAssignment off — skipping video');
+                }
             }
 
             // 2. Vocab
             if (document.querySelector('.word-textbox')) {
-                await handleVocab();
-                await humanDelay(1000, 2000);
+                if (cfg.autoVocab) {
+                    await handleVocab();
+                    await humanDelay(1000, 2000);
+                } else {
+                    log('CONFIG_SKIP', 'autoVocab off — skipping vocab');
+                }
             } else {
-                // 3. Questions
-                await handleQuestion();
+                // 3. Questions — cfg gates individual types inside handleQuestion
+                await handleQuestion(cfg);
             }
         }
     } catch (err) {
@@ -826,10 +920,15 @@ async function runTopCycle() {
     await humanDelay(3000, 6000);
 
     try {
-        const movedStep = handleInternalSteps();
-        if (!movedStep) {
-            await humanDelay(1500, 3000);
-            clickNextActivity();
+        const cfg = await getConfig();
+        if (!cfg.autoAdvance) {
+            log('CONFIG_SKIP', 'autoAdvance off — not moving to next activity');
+        } else {
+            const movedStep = handleInternalSteps();
+            if (!movedStep) {
+                await humanDelay(1500, 3000);
+                clickNextActivity();
+            }
         }
     } catch (err) {
         console.error('[SilentStudy] Top cycle error:', err);
