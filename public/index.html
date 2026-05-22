@@ -40,37 +40,179 @@
 
         <!-- Dashboard (shown after auth) -->
         <div id="panel-dashboard" class="hidden">
+            <!-- Stats row always visible -->
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-questions">0</div>
+                    <div class="stat-label">Questions Answered</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-videos">0</div>
+                    <div class="stat-label">Videos Skipped</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-vocab">0</div>
+                    <div class="stat-label">Vocab Completed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-activities">0</div>
+                    <div class="stat-label">Activities Done</div>
+                </div>
+            </div>
+
+            <!-- Tab navigation -->
+            <div class="tab-nav">
+                <button class="tab-btn active" data-tab="activity">Live Activity</button>
+                <button class="tab-btn" data-tab="config">Bot Config</button>
+                <button class="tab-btn" data-tab="notes">eNotes</button>
+            </div>
+
             <main>
-                <!-- Stats row -->
-                <div class="stats-row">
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-questions">0</div>
-                        <div class="stat-label">Questions Answered</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-videos">0</div>
-                        <div class="stat-label">Videos Skipped</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-vocab">0</div>
-                        <div class="stat-label">Vocab Completed</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="stat-activities">0</div>
-                        <div class="stat-label">Activities Done</div>
-                    </div>
+                <!-- ── Tab: Live Activity ── -->
+                <div id="tab-activity" class="tab-panel">
+                    <section class="status-card">
+                        <div class="status-header">
+                            <h2>Live Activity Log</h2>
+                            <div id="stateBadge" class="badge">Connecting…</div>
+                        </div>
+                        <div id="logs" class="logs-window">
+                            <div class="log-entry system">Waiting for activity from the Chrome Extension…</div>
+                        </div>
+                    </section>
                 </div>
 
-                <!-- Live log -->
-                <section class="status-card">
-                    <div class="status-header">
-                        <h2>Live Activity Log</h2>
-                        <div id="stateBadge" class="badge">Connecting…</div>
-                    </div>
-                    <div id="logs" class="logs-window">
-                        <div class="log-entry system">Waiting for activity from the Chrome Extension…</div>
-                    </div>
-                </section>
+                <!-- ── Tab: Bot Config ── -->
+                <div id="tab-config" class="tab-panel hidden">
+                    <section class="status-card config-tab-card">
+                        <div class="status-header">
+                            <h2>Bot Configuration</h2>
+                            <div id="configBotBadge" class="badge">Loading…</div>
+                        </div>
+                        <p id="configLockedMsg" class="config-locked-msg hidden">
+                            ⚠ Bot is currently active. Stop the bot from the extension to edit settings.
+                        </p>
+                        <div id="configForm">
+                            <div class="config-item">
+                                <div class="config-item-info">
+                                    <span class="config-label">Auto Advance</span>
+                                    <span class="config-desc">Automatically clicks through lessons and moves forward
+                                        without user input.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="cfg-autoAdvance">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="config-item">
+                                <div class="config-item-info">
+                                    <span class="config-label">Auto Submit</span>
+                                    <span class="config-desc">Automatically hits the submit button on quizzes and
+                                        assignments with a humanised delay.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="cfg-autoSubmit">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="config-item">
+                                <div class="config-item-info">
+                                    <span class="config-label">Auto Assessment</span>
+                                    <span class="config-desc">Automatically selects answers on quizzes and tests — the
+                                        core answer-bot feature.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="cfg-autoAssessment">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="config-item config-item-slider" id="accuracy-row">
+                                <div class="config-item-info">
+                                    <span class="config-label">Assessment Accuracy — <span
+                                            id="accuracy-val">75</span>%</span>
+                                    <span class="config-desc">Percentage of correct answers the bot targets (40 – 90%).
+                                        Lower values look more natural.</span>
+                                </div>
+                                <div class="slider-track-wrap">
+                                    <span class="slider-min">40%</span>
+                                    <input type="range" id="cfg-accuracy" min="40" max="90" step="1" value="75"
+                                        class="range-slider">
+                                    <span class="slider-max">90%</span>
+                                </div>
+                            </div>
+                            <div class="config-item">
+                                <div class="config-item-info">
+                                    <span class="config-label">Auto Assignment</span>
+                                    <span class="config-desc">Handles written and structured assignments like vocab
+                                        activities, labs, and drag-and-drop tasks.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="cfg-autoAssignment">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="config-item">
+                                <div class="config-item-info">
+                                    <span class="config-label">Auto Write</span>
+                                    <span class="config-desc">Uses AI to generate and submit free-response answers and
+                                        essays with a built-in humaniser.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="cfg-autoWrite">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="config-item">
+                                <div class="config-item-info">
+                                    <span class="config-label">Auto Project</span>
+                                    <span class="config-desc">Handles larger project-based tasks assigned by Edgenuity
+                                        automatically.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="cfg-autoProject">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="config-item">
+                                <div class="config-item-info">
+                                    <span class="config-label">Auto Vocab / Instructions</span>
+                                    <span class="config-desc">Automatically handles vocabulary activities and
+                                        instruction slides including lesson intro pages.</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="cfg-autoVocab">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="config-actions">
+                                <button id="saveConfigBtn" class="btn-primary btn-save-config">Save
+                                    Configuration</button>
+                                <span id="configSaveMsg" class="config-save-msg hidden"></span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- ── Tab: eNotes ── -->
+                <div id="tab-notes" class="tab-panel hidden">
+                    <section class="status-card notes-card">
+                        <div class="status-header">
+                            <h2>eNotes</h2>
+                            <div class="notes-meta">
+                                <span id="notes-count" class="muted">—</span>
+                                <button id="refreshNotesBtn" class="btn-ghost-sm">Refresh</button>
+                            </div>
+                        </div>
+                        <div id="notes-container" class="notes-container">
+                            <div class="notes-empty muted">No notes yet — answered questions will appear here.</div>
+                        </div>
+                        <div id="notes-pagination" class="notes-pagination hidden">
+                            <button id="notesPrevBtn" class="btn-ghost-sm" disabled>← Prev</button>
+                            <span id="notesPageInfo" class="muted"></span>
+                            <button id="notesNextBtn" class="btn-ghost-sm">Next →</button>
+                        </div>
+                    </section>
+                </div>
             </main>
 
             <div class="dashboard-footer">

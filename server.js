@@ -48,6 +48,17 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/silentstudy
 
 // ─── Schemas & Models ─────────────────────────────────────────────────────────
 
+const DEFAULT_BOT_CONFIG = {
+  autoAdvance: true,
+  autoSubmit: true,
+  autoAssessment: true,
+  assessmentAccuracy: 75,
+  autoAssignment: true,
+  autoWrite: true,
+  autoProject: true,
+  autoVocab: true,
+};
+
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String },
@@ -60,6 +71,17 @@ const userSchema = new mongoose.Schema({
   otp: { type: String },
   otpExpiry: { type: Date },
   createdAt: { type: Date, default: Date.now },
+  botActive: { type: Boolean, default: false },
+  botConfig: {
+    autoAdvance: { type: Boolean, default: true },
+    autoSubmit: { type: Boolean, default: true },
+    autoAssessment: { type: Boolean, default: true },
+    assessmentAccuracy: { type: Number, default: 75, min: 40, max: 90 },
+    autoAssignment: { type: Boolean, default: true },
+    autoWrite: { type: Boolean, default: true },
+    autoProject: { type: Boolean, default: true },
+    autoVocab: { type: Boolean, default: true },
+  },
 });
 const User = mongoose.model('User', userSchema);
 
@@ -76,6 +98,17 @@ const answerSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 const Answer = mongoose.model('Answer', answerSchema);
+
+// Per-user notes — every question solved gets recorded here for the eNotes tab
+const noteSchema = new mongoose.Schema({
+  userId: { type: String, index: true },
+  questionText: { type: String },
+  answer: { type: String },
+  activityType: { type: String, default: 'mcq' },
+  source: { type: String, enum: ['ai', 'db'], default: 'ai' },
+  timestamp: { type: Date, default: Date.now },
+});
+const Note = mongoose.model('Note', noteSchema);
 
 // Session activity log — feeds the live dashboard
 const logSchema = new mongoose.Schema({
@@ -208,13 +241,13 @@ app.post('/register', async (req, res) => {
     user.addons = addons || [];
     user.otp = undefined;
     user.otpExpiry = undefined;
-    
+
     // Auto-activate for local development (since Stripe webhook can't reach localhost)
     const now = new Date();
     user.isPaid = true;
     user.expiryDate = new Date(now.getTime() + planDays(user.plan) * 24 * 60 * 60 * 1000);
     user.licenseKey = 'SS-' + require('uuid').v4().toUpperCase().replace(/-/g, '').slice(0, 12);
-    
+
     await user.save();
 
     res.json({ message: 'Registered successfully.', userId: user._id });
@@ -335,9 +368,9 @@ app.get('/api/download-extension', authMiddleware, (req, res) => {
     const zip = new AdmZip();
     const extPath = path.join(__dirname, './chrome-extension');
     zip.addLocalFolder(extPath);
-    
+
     const zipBuffer = zip.toBuffer();
-    
+
     res.set('Content-Type', 'application/zip');
     res.set('Content-Disposition', 'attachment; filename="silent-study-extension.zip"');
     res.set('Content-Length', zipBuffer.length);
@@ -466,6 +499,8 @@ app.post('/api/solve', authMiddleware, solveLimiter, async (req, res) => {
       { new: false }
     );
     if (cached) {
+      // Save to user's personal eNotes even for cached answers
+      Note.create({ userId: req.user.userId, questionText: questionText.slice(0, 2000), answer: cached.answer, activityType: type, source: 'db' }).catch(() => { });
       return res.json({ answer: cached.answer, source: 'db', confidence: cached.confidence });
     }
 
@@ -487,6 +522,9 @@ app.post('/api/solve', authMiddleware, solveLimiter, async (req, res) => {
       source: 'ai',
       confidence: 0.7,
     });
+
+    // 4. Save to user's personal eNotes
+    Note.create({ userId: req.user.userId, questionText: questionText.slice(0, 2000), answer, activityType: type, source: 'ai' }).catch(() => { });
 
     res.json({ answer, source: 'ai', confidence: 0.7 });
   } catch (err) {
@@ -524,6 +562,82 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Stats failed.' });
+  }
+});
+
+// ─── Bot Status ──────────────────────────────────────────────────────────────
+// Called by the Chrome Extension whenever the bot is toggled on/off
+app.post('/api/bot-status', authMiddleware, async (req, res) => {
+  try {
+    const { active } = req.body;
+    if (typeof active !== 'boolean') return res.status(400).json({ error: 'active (boolean) required.' });
+    await User.findByIdAndUpdate(req.user.userId, { botActive: active });
+    res.json({ ok: true, botActive: active });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update bot status.' });
+  }
+});
+
+// ─── Bot Config ───────────────────────────────────────────────────────────────
+
+app.get('/api/config', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('botConfig botActive');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    // Merge stored config with defaults so any missing field is filled in
+    const cfg = Object.assign({}, DEFAULT_BOT_CONFIG, user.botConfig ? user.botConfig.toObject() : {});
+    res.json({ config: cfg, botActive: user.botActive || false });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load config.' });
+  }
+});
+
+app.post('/api/config', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('botActive');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    if (user.botActive) return res.status(403).json({ error: 'Cannot update config while bot is active. Stop the bot first.' });
+
+    const { autoAdvance, autoSubmit, autoAssessment, assessmentAccuracy,
+      autoAssignment, autoWrite, autoProject, autoVocab } = req.body;
+
+    const update = {};
+    if (typeof autoAdvance === 'boolean') update['botConfig.autoAdvance'] = autoAdvance;
+    if (typeof autoSubmit === 'boolean') update['botConfig.autoSubmit'] = autoSubmit;
+    if (typeof autoAssessment === 'boolean') update['botConfig.autoAssessment'] = autoAssessment;
+    if (typeof autoAssignment === 'boolean') update['botConfig.autoAssignment'] = autoAssignment;
+    if (typeof autoWrite === 'boolean') update['botConfig.autoWrite'] = autoWrite;
+    if (typeof autoProject === 'boolean') update['botConfig.autoProject'] = autoProject;
+    if (typeof autoVocab === 'boolean') update['botConfig.autoVocab'] = autoVocab;
+    if (typeof assessmentAccuracy === 'number') {
+      const clamped = Math.max(40, Math.min(90, assessmentAccuracy));
+      update['botConfig.assessmentAccuracy'] = clamped;
+    }
+
+    await User.findByIdAndUpdate(req.user.userId, { $set: update });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save config.' });
+  }
+});
+
+// ─── eNotes ───────────────────────────────────────────────────────────────────
+
+app.get('/api/notes', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    const skip = (page - 1) * limit;
+
+    const [notes, total] = await Promise.all([
+      Note.find({ userId }).sort({ timestamp: -1 }).skip(skip).limit(limit).lean(),
+      Note.countDocuments({ userId }),
+    ]);
+
+    res.json({ notes, total, page, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load notes.' });
   }
 });
 

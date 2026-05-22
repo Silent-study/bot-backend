@@ -304,3 +304,199 @@ body {
 .footnote a:hover {
     text-decoration: underline;
 }
+
+/* ── Popup Tab Nav ──────────────────────────────────────────── */
+.popup-tab-nav {
+    display: flex;
+    gap: 3px;
+    background: #111;
+    border: 1px solid #1c1c1c;
+    border-radius: 8px;
+    padding: 3px;
+    margin: 12px 0 10px;
+}
+
+.popup-tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #555;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.popup-tab-btn:hover {
+    color: #999;
+}
+
+.popup-tab-btn.active {
+    background: #1e3a5f;
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+.popup-tab-panel {
+    /* no extra padding, uses panel padding */
+}
+
+/* ── Extension Config Tab ───────────────────────────────────── */
+.ext-config-locked {
+    background: #2a1f00;
+    border: 1px solid #5a3e00;
+    color: #fbbf24;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 11px;
+    margin-bottom: 8px;
+}
+
+.ext-config-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.ext-cfg-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid #141414;
+}
+
+.ext-cfg-label {
+    color: #a3a3a3;
+    font-size: 11px;
+}
+
+/* Mini toggle for config */
+.mini-switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+}
+
+.mini-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.mini-switch .mini-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: #252525;
+    border-radius: 999px;
+    transition: background 0.15s;
+    width: 32px;
+    height: 18px;
+}
+
+.mini-switch .mini-slider::before {
+    content: '';
+    position: absolute;
+    height: 12px;
+    width: 12px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.15s;
+}
+
+.mini-switch input:checked+.mini-slider {
+    background: #2563eb;
+}
+
+.mini-switch input:checked+.mini-slider::before {
+    transform: translateX(14px);
+}
+
+/* Accuracy row in config */
+.ext-config-accuracy {
+    padding: 8px 0 4px;
+    border-bottom: 1px solid #141414;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ext-range-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #252525;
+    border-radius: 999px;
+    border: none;
+    outline: none;
+    cursor: pointer;
+}
+
+.ext-range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3b82f6;
+    border: 2px solid #fff;
+    cursor: pointer;
+}
+
+.ext-range-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3b82f6;
+    border: 2px solid #fff;
+    cursor: pointer;
+}
+
+/* Disabled state */
+.ext-config-disabled .mini-switch input {
+    pointer-events: none;
+    opacity: 0.35;
+}
+
+.ext-config-disabled .ext-range-slider {
+    pointer-events: none;
+    opacity: 0.35;
+}
+
+.ext-config-disabled #ext-save-config {
+    pointer-events: none;
+    opacity: 0.35;
+}
+
+.ext-config-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 10px;
+}
+
+.btn-sm {
+    width: auto;
+    padding: 7px 16px;
+    font-size: 11px;
+    margin-top: 0;
+}
+
+.ext-save-msg {
+    font-size: 10px;
+}
+
+.ext-save-msg.success {
+    color: #4ade80;
+}
+
+.ext-save-msg.error {
+    color: #f87171;
+}

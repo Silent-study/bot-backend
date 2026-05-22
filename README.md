@@ -22,9 +22,11 @@
 7. [Payment Flow (Stripe)](#7-payment-flow-stripe)
 8. [HWID Locking](#8-hwid-locking)
 9. [Live Dashboard](#9-live-dashboard)
-10. [Deploying to Production](#10-deploying-to-production)
-11. [Common Issues & Fixes](#11-common-issues--fixes)
-12. [Adding New Activity Types](#12-adding-new-activity-types)
+10. [Bot Configuration](#10-bot-configuration)
+11. [eNotes](#11-enotes)
+12. [Deploying to Production](#12-deploying-to-production)
+13. [Common Issues & Fixes](#13-common-issues--fixes)
+14. [Adding New Activity Types](#14-adding-new-activity-types)
 
 ---
 
@@ -166,17 +168,27 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 #### `User`
 ```
-email        String  unique, required
-password     String  bcrypt hashed (cost 12)
-isPaid       Boolean default: false
-plan         String  'day' | 'week' | 'month' | 'six_month'
-addons       [String] e.g. ['service', 'proctor']
-expiryDate   Date    subscription end date
-licenseKey   String  'SS-XXXXXXXXXXXX' — generated on payment
-hwid         String  SHA-256 fingerprint of first device that logged in
-otp          String  temp 6-digit code (registration / password reset)
-otpExpiry    Date    10 minutes from send time
-createdAt    Date    default: now
+email              String   unique, required
+password           String   bcrypt hashed (cost 12)
+isPaid             Boolean  default: false
+plan               String   'day' | 'week' | 'month' | 'six_month'
+addons             [String] e.g. ['service', 'proctor']
+expiryDate         Date     subscription end date
+licenseKey         String   'SS-XXXXXXXXXXXX' — generated on payment
+hwid               String   SHA-256 fingerprint of first device that logged in
+otp                String   temp 6-digit code (registration / password reset)
+otpExpiry          Date     10 minutes from send time
+createdAt          Date     default: now
+botActive          Boolean  whether the bot is currently running (synced from extension)
+botConfig          Object   per-user automation settings (see Bot Configuration section)
+  autoAdvance        Boolean  default: true
+  autoSubmit         Boolean  default: true
+  autoAssessment     Boolean  default: true
+  assessmentAccuracy Number   40–90, default: 75
+  autoAssignment     Boolean  default: true
+  autoWrite          Boolean  default: true
+  autoProject        Boolean  default: true
+  autoVocab          Boolean  default: true
 ```
 
 #### `Answer` (the cache)
@@ -197,6 +209,16 @@ createdAt    Date    default: now
 userId       String  ref to User._id (string form)
 event        String  event name, e.g. 'MCQ_ANSWERED', 'VIDEO_SKIP_DONE'
 detail       String  extra info, e.g. the question text or answer chosen
+timestamp    Date    default: now
+```
+
+#### `Note` (eNotes)
+```
+userId       String  ref to User._id (string form)
+questionText String  question as shown by Edgenuity (up to 2000 chars)
+answer       String  the answer supplied by the bot
+activityType String  'mcq' | 'essay' | 'vocab' | 'dropdown' | 'checkbox'
+source       String  'ai' (OpenAI answer) | 'db' (cached answer)
 timestamp    Date    default: now
 ```
 
@@ -239,6 +261,10 @@ All protected routes require: `Authorization: Bearer <jwt>`
 | `POST` | `/api/solve` | Yes | 120/min | `{ questionText, options?, activityType? }` | `{ answer, source, confidence }` |
 | `POST` | `/api/log` | Yes | — | `{ event, detail? }` | `{ ok: true }` |
 | `GET` | `/api/stats` | Yes | — | — | `{ questionsAnswered, videosSkipped, vocabCompleted, activitiesTotal, recentLogs }` |
+| `POST` | `/api/bot-status` | Yes | — | `{ active: boolean }` | `{ ok, botActive }` |
+| `GET` | `/api/config` | Yes | — | — | `{ config, botActive }` |
+| `POST` | `/api/config` | Yes | — | `{ autoAdvance?, autoSubmit?, autoAssessment?, assessmentAccuracy?, autoAssignment?, autoWrite?, autoProject?, autoVocab? }` | `{ ok: true }` |
+| `GET` | `/api/notes` | Yes | — | `?page=1&limit=20` | `{ notes, total, page, pages }` |
 
 **`/api/solve` flow:**
 1. Normalise + SHA-256 hash the question text
@@ -246,8 +272,8 @@ All protected routes require: `Authorization: Bearer <jwt>`
 3. If not found: call OpenAI (`brain.js`) → store result → return
 
 **`source` field in response:**
-- `"db"` — served from Answer cache (free, instant)
-- `"ai"` — fresh OpenAI call (costs tokens)
+- `"db"` — served from Answer cache (free, instant). Also saved to user's Notes.
+- `"ai"` — fresh OpenAI call (costs tokens). Also saved to user's Notes.
 
 ---
 
@@ -329,6 +355,8 @@ db.answers.updateOne(
 | `SOLVE` | content_script.js | `{ questionText, options, activityType }` | `{ answer, source, confidence }` |
 | `LOG` | content_script.js | `{ event, detail }` | (no response, fire-and-forget) |
 | `BIND_HWID` | background.js (internal) | `{ hwid }` | (no response) |
+
+When `TOGGLE_BOT` is sent, `background.js` also calls `POST /api/bot-status` to sync the active state with the server so the dashboard config tab locks/unlocks accordingly.
 
 **Storage keys** (`chrome.storage.local`):
 
@@ -464,6 +492,15 @@ Two panels controlled by `hidden` class:
 - `#panel-login` — shown when `GET_STATUS` returns `loggedIn: false`
 - `#panel-dashboard` — shown after login
 
+Inside the dashboard panel there are two tabs:
+
+| Tab | Panel ID | Content |
+|---|---|---|
+| **Dashboard** | `#ptab-dashboard` | Stats grid + recent activity log |
+| **Config** | `#ptab-config` | Bot config toggles + accuracy slider (read-only when bot is active) |
+
+The Config tab fetches `GET /api/config` when opened and lets users save changes via `POST /api/config`. If `botActive` is true, all inputs are visually disabled and a warning banner is shown. Saving is blocked server-side too.
+
 **Live log updates:** `popup.js` listens to `chrome.storage.onChanged`. When `background.js` writes `lastLog` to storage, the popup appends the entry to the log list immediately — no polling needed.
 
 **Stats:** Loaded on dashboard show via `loadStats()`, which calls `GET /api/stats` directly (popup.js has `http://localhost:3000` hardcoded — update for production).
@@ -572,7 +609,15 @@ Accessible at `http://localhost:3000` (or your deployed domain).
 
 **Login** with the same email/password as the extension.
 
-The dashboard:
+The dashboard has three tabs:
+
+| Tab | Description |
+|---|---|
+| **Live Activity** | Real-time event log streamed over Socket.IO + 24h stats |
+| **Bot Config** | Per-user automation settings (locked while bot is running) |
+| **eNotes** | Paginated list of every question answered by the bot and its answer |
+
+**Live Activity tab:**
 1. Calls `POST /api/auth/login` → gets JWT
 2. Connects Socket.IO, emits `authenticate` with the token
 3. Joins a private room keyed by `userId`
@@ -581,7 +626,51 @@ The dashboard:
 
 ---
 
-## 10. Deploying to Production
+## 10. Bot Configuration
+
+Each user has a personal `botConfig` stored in MongoDB. The defaults mirror the previous hardcoded behaviour so no functionality changes unless the user explicitly edits them.
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| **Auto Advance** | Toggle | `true` | Automatically clicks through lessons and advances to the next activity |
+| **Auto Submit** | Toggle | `true` | Automatically clicks the submit button with a humanised delay |
+| **Auto Assessment** | Toggle | `true` | Core answer-bot — selects answers on quizzes and tests |
+| **Assessment Accuracy** | Slider 40–90% | `75` | Target percentage of correct answers. Lower = more natural |
+| **Auto Assignment** | Toggle | `true` | Handles written/structured assignments, labs, drag-and-drop |
+| **Auto Write** | Toggle | `true` | AI-generated free-response and essay answers with humaniser |
+| **Auto Project** | Toggle | `true` | Handles larger project-based tasks |
+| **Auto Vocab / Instructions** | Toggle | `true` | Handles vocabulary and instruction slides |
+
+**Where to change config:**
+- **Dashboard** → *Bot Config* tab — full UI with descriptions, only editable when bot is inactive
+- **Extension popup** → *Config* tab — compact version, read-only when bot is active, editable otherwise
+
+**Config lock mechanism:**
+- When the user toggles the bot ON in the extension, `background.js` POSTs `{ active: true }` to `/api/bot-status`
+- The server sets `user.botActive = true`
+- The dashboard and extension popup both read `botActive` from `GET /api/config` and disable all config inputs
+- `POST /api/config` returns `403` if `botActive` is true, as a server-side guard
+
+---
+
+## 11. eNotes
+
+Every question solved by the bot is saved as a `Note` document in MongoDB, scoped to the user. This builds a searchable history of every question-answer pair.
+
+**Viewing eNotes:**
+- Open the dashboard → **eNotes** tab
+- Shows 20 notes per page, sorted newest first
+- Each card shows: activity type, AI/cached badge, timestamp, question text, and the bot's answer
+- Use the Refresh button or pagination controls to navigate
+
+**API:**
+- `GET /api/notes?page=1&limit=20` — paginated list (max 100 per page)
+
+Notes are written automatically by `/api/solve` for every question, both for fresh AI answers and cache hits.
+
+---
+
+## 12. Deploying to Production
 
 ### Backend (e.g. Railway, Render, or VPS)
 
@@ -618,7 +707,7 @@ const backendBase = 'https://your-production-domain.com';
 
 ---
 
-## 11. Common Issues & Fixes
+## 13. Common Issues & Fixes
 
 ### "Network error" in extension popup
 - Is the server running? (`npm start`)
@@ -661,7 +750,7 @@ This is caused by Edgenuity pre-setting `FrameComplete` from server-side state. 
 
 ---
 
-## 12. Adding New Activity Types
+## 14. Adding New Activity Types
 
 **Step 1 — Handle in `content_script.js`**
 

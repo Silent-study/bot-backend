@@ -56,25 +56,53 @@
             </button>
         </div>
 
-        <div class="stats-grid">
-            <div class="stat">
-                <div id="stat-questions" class="stat-num">0</div>
-                <div class="stat-label">Answered</div>
+        <!-- Popup tab nav -->
+        <div class="popup-tab-nav">
+            <button class="popup-tab-btn active" data-ptab="dashboard">Dashboard</button>
+            <button class="popup-tab-btn" data-ptab="config">Config</button>
+        </div>
+
+        <!-- Dashboard tab content -->
+        <div id="ptab-dashboard" class="popup-tab-panel">
+            <div class="stats-grid">
+                <div class="stat">
+                    <div id="stat-questions" class="stat-num">0</div>
+                    <div class="stat-label">Answered</div>
+                </div>
+                <div class="stat">
+                    <div id="stat-videos" class="stat-num">0</div>
+                    <div class="stat-label">Videos Skipped</div>
+                </div>
+                <div class="stat">
+                    <div id="stat-vocab" class="stat-num">0</div>
+                    <div class="stat-label">Vocab Done</div>
+                </div>
             </div>
-            <div class="stat">
-                <div id="stat-videos" class="stat-num">0</div>
-                <div class="stat-label">Videos Skipped</div>
-            </div>
-            <div class="stat">
-                <div id="stat-vocab" class="stat-num">0</div>
-                <div class="stat-label">Vocab Done</div>
+
+            <div class="log-section">
+                <div class="log-title">Recent Activity</div>
+                <div id="log-list" class="log-list">
+                    <div class="log-item muted">No activity yet.</div>
+                </div>
             </div>
         </div>
 
-        <div class="log-section">
-            <div class="log-title">Recent Activity</div>
-            <div id="log-list" class="log-list">
-                <div class="log-item muted">No activity yet.</div>
+        <!-- Config tab content (read-only when bot is active) -->
+        <div id="ptab-config" class="popup-tab-panel hidden">
+            <div id="ext-config-locked" class="ext-config-locked hidden">
+                ⚠ Stop the bot to edit settings.
+            </div>
+            <div id="ext-config-list" class="ext-config-list">
+                <!-- populated by popup.js -->
+            </div>
+            <div class="ext-config-accuracy hidden" id="ext-accuracy-row">
+                <span class="ext-cfg-label">Accuracy: <strong id="ext-accuracy-val">75</strong>%</span>
+                <input type="range" id="ext-cfg-accuracy" min="40" max="90" step="1" value="75"
+                    class="ext-range-slider">
+            </div>
+            <div class="ext-config-actions" id="ext-config-actions">
+                <button id="ext-save-config" class="btn-primary btn-sm">Save</button>
+                <span id="ext-save-msg" class="ext-save-msg hidden"></span>
             </div>
         </div>
     </div>

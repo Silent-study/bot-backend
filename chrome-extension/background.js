@@ -17,12 +17,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.type === 'TOGGLE_BOT') {
-        chrome.storage.local.get(['botEnabled'], (data) => {
+        chrome.storage.local.get(['botEnabled', 'token'], (data) => {
             const next = !data.botEnabled;
             chrome.storage.local.set({ botEnabled: next }, () => {
                 sendResponse({ botEnabled: next });
                 // Broadcast new state to all Edgenuity tabs
                 broadcastToEdgenuityTabs({ type: 'BOT_STATE_CHANGED', enabled: next });
+                // Notify server so the dashboard config tab can lock/unlock
+                if (data.token) {
+                    fetch(API_BASE + '/api/bot-status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + data.token },
+                        body: JSON.stringify({ active: next }),
+                    }).catch(() => { });
+                }
             });
         });
         return true;
@@ -120,6 +128,13 @@ async function handleLogin(email, password) {
             addons: data.addons || [],
             botEnabled: true,
         });
+
+        // Mark bot as inactive on server at login (fresh start)
+        fetch(API_BASE + '/api/bot-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + data.token },
+            body: JSON.stringify({ active: false }),
+        }).catch(() => { });
 
         // Bind HWID in background after login
         const hwid = await generateHWID();
