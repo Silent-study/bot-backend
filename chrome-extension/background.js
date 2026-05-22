@@ -1,7 +1,7 @@
 'use strict';
 
 // Replace with your deployed backend URL
-const API_BASE = 'http://localhost:3000';
+const API_BASE = 'http://127.0.0.1:3000';
 
 // ─── Message Router ───────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -134,7 +134,8 @@ async function handleLogin(email, password) {
 
         return { success: true, plan: data.plan, expiresAt: data.expiresAt };
     } catch (err) {
-        return { success: false, error: 'Network error. Check your connection.' };
+        console.error('Login error:', err);
+        return { success: false, error: 'Network error: ' + err.message };
     }
 }
 
@@ -145,9 +146,6 @@ async function generateHWID() {
         navigator.userAgent,
         navigator.language,
         navigator.hardwareConcurrency,
-        screen.width,
-        screen.height,
-        screen.colorDepth,
         Intl.DateTimeFormat().resolvedOptions().timeZone,
     ].join('|');
 

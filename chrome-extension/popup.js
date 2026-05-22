@@ -146,7 +146,7 @@ function loadStats() {
     chrome.storage.local.get(['token'], ({ token }) => {
         if (!token) return;
         // Load today's stats from backend
-        const backendBase = 'http://localhost:3000';
+        const backendBase = 'http://127.0.0.1:3000';
         fetch(backendBase + '/api/stats', {
             headers: { 'Authorization': 'Bearer ' + token },
         })

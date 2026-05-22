@@ -14,6 +14,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const path = require('path');
 
 const { solveQuestion, solveOpenQuestion } = require('./brain');
 
@@ -207,6 +208,13 @@ app.post('/register', async (req, res) => {
     user.addons = addons || [];
     user.otp = undefined;
     user.otpExpiry = undefined;
+    
+    // Auto-activate for local development (since Stripe webhook can't reach localhost)
+    const now = new Date();
+    user.isPaid = true;
+    user.expiryDate = new Date(now.getTime() + planDays(user.plan) * 24 * 60 * 60 * 1000);
+    user.licenseKey = 'SS-' + require('uuid').v4().toUpperCase().replace(/-/g, '').slice(0, 12);
+    
     await user.save();
 
     res.json({ message: 'Registered successfully.', userId: user._id });
@@ -295,6 +303,48 @@ app.post('/api/auth/bind-hwid', authMiddleware, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'HWID bind failed.' });
+  }
+});
+
+// ─── User Profile ─────────────────────────────────────────────────────────────
+
+app.get('/api/user', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password -otp -otpExpiry');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    res.json({
+      email: user.email,
+      isPaid: user.isPaid,
+      plan: user.plan,
+      addons: user.addons || [],
+      expiryDate: user.expiryDate,
+      licenseKey: user.licenseKey,
+      createdAt: user.createdAt,
+    });
+  } catch (err) {
+    console.error('user profile error:', err);
+    res.status(500).json({ error: 'Failed to load user data.' });
+  }
+});
+
+// ─── Download Extension ───────────────────────────────────────────────────────
+
+app.get('/api/download-extension', authMiddleware, (req, res) => {
+  try {
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip();
+    const extPath = path.join(__dirname, './chrome-extension');
+    zip.addLocalFolder(extPath);
+    
+    const zipBuffer = zip.toBuffer();
+    
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="silent-study-extension.zip"');
+    res.set('Content-Length', zipBuffer.length);
+    res.send(zipBuffer);
+  } catch (err) {
+    console.error('download extension error:', err);
+    res.status(500).json({ error: 'Failed to create extension zip.' });
   }
 });
 
