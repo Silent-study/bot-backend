@@ -137,11 +137,11 @@ function startExpiryCountdown(expiresAt) {
         const pad = (num) => String(num).padStart(2, '0');
 
         if (days > 0) {
-            infoExpiry.textContent = `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s remaining`;
+            infoExpiry.textContent = `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
         } else if (hours > 0) {
-            infoExpiry.textContent = `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s remaining`;
+            infoExpiry.textContent = `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
         } else {
-            infoExpiry.textContent = `${pad(minutes)}m ${pad(seconds)}s remaining`;
+            infoExpiry.textContent = `${pad(minutes)}m ${pad(seconds)}s`;
         }
     };
 
