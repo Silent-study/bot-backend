@@ -298,7 +298,7 @@ app.post('/reset-password', async (req, res) => {
 });
 
 // Login — returns JWT used by Chrome Extension
-app.post('auth/login', authLimiter, async (req, res) => {
+app.post('/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'email and password required.' });
@@ -327,7 +327,7 @@ app.post('auth/login', authLimiter, async (req, res) => {
 });
 
 // Bind HWID — first device locks the account
-app.post('auth/bind-hwid', authMiddleware, async (req, res) => {
+app.post('/auth/bind-hwid', authMiddleware, async (req, res) => {
   try {
     const { hwid } = req.body;
     if (!hwid) return res.status(400).json({ error: 'hwid required.' });
@@ -348,7 +348,7 @@ app.post('auth/bind-hwid', authMiddleware, async (req, res) => {
 
 // ─── User Profile ─────────────────────────────────────────────────────────────
 
-app.get('user', authMiddleware, async (req, res) => {
+app.get('/user', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('-password -otp -otpExpiry');
     if (!user) return res.status(404).json({ error: 'User not found.' });
@@ -369,7 +369,7 @@ app.get('user', authMiddleware, async (req, res) => {
 
 // ─── Download Extension ───────────────────────────────────────────────────────
 
-app.get('download-extension', authMiddleware, (req, res) => {
+app.get('/download-extension', authMiddleware, (req, res) => {
   try {
     const AdmZip = require('adm-zip');
     const zip = new AdmZip();
@@ -487,7 +487,7 @@ async function handleStripeWebhook(req, res) {
 
 // ─── Core API: Answer Solver ──────────────────────────────────────────────────
 
-app.post('solve', authMiddleware, solveLimiter, async (req, res) => {
+app.post('/solve', authMiddleware, solveLimiter, async (req, res) => {
   try {
     const { questionText, options, activityType } = req.body;
     const opts = options || [];
@@ -542,7 +542,7 @@ app.post('solve', authMiddleware, solveLimiter, async (req, res) => {
 
 // ─── Activity Log & Stats ─────────────────────────────────────────────────────
 
-app.post('log', authMiddleware, async (req, res) => {
+app.post('/log', authMiddleware, async (req, res) => {
   try {
     const { event, detail } = req.body;
     const userId = req.user.userId;
@@ -554,7 +554,7 @@ app.post('log', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('stats', authMiddleware, async (req, res) => {
+app.get('/stats', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -574,7 +574,7 @@ app.get('stats', authMiddleware, async (req, res) => {
 
 // ─── Bot Status ──────────────────────────────────────────────────────────────
 // Called by the Chrome Extension whenever the bot is toggled on/off
-app.post('bot-status', authMiddleware, async (req, res) => {
+app.post('/bot-status', authMiddleware, async (req, res) => {
   try {
     const { active } = req.body;
     if (typeof active !== 'boolean') return res.status(400).json({ error: 'active (boolean) required.' });
@@ -587,7 +587,7 @@ app.post('bot-status', authMiddleware, async (req, res) => {
 
 // ─── Bot Config ───────────────────────────────────────────────────────────────
 
-app.get('config', authMiddleware, async (req, res) => {
+app.get('/config', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('botConfig botActive');
     if (!user) return res.status(404).json({ error: 'User not found.' });
@@ -599,7 +599,7 @@ app.get('config', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('config', authMiddleware, async (req, res) => {
+app.post('/config', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('botActive');
     if (!user) return res.status(404).json({ error: 'User not found.' });
@@ -630,7 +630,7 @@ app.post('config', authMiddleware, async (req, res) => {
 
 // ─── eNotes ───────────────────────────────────────────────────────────────────
 
-app.get('notes', authMiddleware, async (req, res) => {
+app.get('/notes', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
     const page = Math.max(1, parseInt(req.query.page) || 1);
