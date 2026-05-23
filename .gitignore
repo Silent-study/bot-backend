@@ -4,3 +4,5 @@ user-data/
 user-data-python/
 *.log
 npm-debug.log*
+dummy-page.html
+dummy-page_files/
