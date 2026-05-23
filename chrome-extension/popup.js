@@ -154,7 +154,7 @@ function appendLog(event, detail) {
 function loadStats() {
     chrome.storage.local.get(['token'], ({ token }) => {
         if (!token) return;
-        const backendBase = 'http://127.0.0.1:3000';
+        const backendBase = 'https://silentstudy.net/';
         fetch(backendBase + '/api/stats', {
             headers: { 'Authorization': 'Bearer ' + token },
         })
