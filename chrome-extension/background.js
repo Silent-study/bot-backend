@@ -1,7 +1,7 @@
 'use strict';
 
 // Replace with your deployed backend URL
-const API_BASE = 'https://silentstudy.net/';
+const API_BASE = 'http://localhost:3000';
 
 // ─── Message Router ───────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

@@ -1,5 +1,7 @@
 'use strict';
 
+const API_BASE = 'http://localhost:3000'; // Developed locally, change to 'https://silentstudy.net' for production
+
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const panelLogin = document.getElementById('panel-login');
 const panelDashboard = document.getElementById('panel-dashboard');
@@ -191,8 +193,7 @@ function appendLog(event, detail) {
 function loadStats() {
     chrome.storage.local.get(['token'], ({ token }) => {
         if (!token) return;
-        const backendBase = 'https://silentstudy.net/';
-        fetch(backendBase + '/api/stats', {
+        fetch(API_BASE + '/api/stats', {
             headers: { 'Authorization': 'Bearer ' + token },
         })
             .then(r => r.json())
@@ -231,8 +232,7 @@ const CONFIG_FIELDS = [
 function loadExtConfig() {
     chrome.storage.local.get(['token', 'botEnabled'], ({ token, botEnabled }) => {
         if (!token) return;
-        const backendBase = 'https://silentstudy.net/';
-        fetch(backendBase + '/api/config', {
+        fetch(API_BASE + '/api/config', {
             headers: { 'Authorization': 'Bearer ' + token },
         })
             .then(r => r.json())
@@ -304,7 +304,6 @@ document.getElementById('ext-save-config').addEventListener('click', () => {
             setTimeout(() => saveMsg.classList.add('hidden'), 2500);
             return;
         }
-        const backendBase = 'https://silentstudy.net/';
         const saveBtn = document.getElementById('ext-save-config');
         const saveMsg = document.getElementById('ext-save-msg');
         const accuracySlider = document.getElementById('ext-cfg-accuracy');
@@ -318,7 +317,7 @@ document.getElementById('ext-save-config').addEventListener('click', () => {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving…';
 
-        fetch(backendBase + '/api/config', {
+        fetch(API_BASE + '/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body: JSON.stringify(body),
