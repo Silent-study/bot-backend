@@ -77,6 +77,10 @@ function connectSocket(token, planInfo) {
         updateStat(entry.event);
     });
 
+    socket.on('bot-status', ({ botActive }) => {
+        applyBotStatus(botActive);
+    });
+
     socket.on('disconnect', () => {
         setBadge('Disconnected', '');
         connectionPulse.classList.remove('active');
@@ -218,6 +222,25 @@ accuracySlider.addEventListener('input', () => {
     accuracyVal.textContent = accuracySlider.value;
 });
 
+function applyBotStatus(botActive) {
+    const configInputs = configForm.querySelectorAll('input');
+    if (botActive) {
+        configBotBadge.textContent = 'Bot Active';
+        configBotBadge.className = 'badge active';
+        configLockedMsg.classList.remove('hidden');
+        configForm.classList.add('config-form-disabled');
+        configInputs.forEach(el => { el.disabled = true; });
+        saveConfigBtn.disabled = true;
+    } else {
+        configBotBadge.textContent = 'Bot Inactive';
+        configBotBadge.className = 'badge';
+        configLockedMsg.classList.add('hidden');
+        configForm.classList.remove('config-form-disabled');
+        configInputs.forEach(el => { el.disabled = false; });
+        saveConfigBtn.disabled = false;
+    }
+}
+
 async function loadConfig(token) {
     try {
         const res = await fetch(API_BASE + '/api/config', {
@@ -241,22 +264,7 @@ async function loadConfig(token) {
         accuracyVal.textContent = cfg.assessmentAccuracy;
 
         // Lock / unlock form based on bot status
-        const configInputs = configForm.querySelectorAll('input');
-        if (botActive) {
-            configBotBadge.textContent = 'Bot Active';
-            configBotBadge.className = 'badge active';
-            configLockedMsg.classList.remove('hidden');
-            configForm.classList.add('config-form-disabled');
-            configInputs.forEach(el => { el.disabled = true; });
-            saveConfigBtn.disabled = true;
-        } else {
-            configBotBadge.textContent = 'Bot Inactive';
-            configBotBadge.className = 'badge';
-            configLockedMsg.classList.add('hidden');
-            configForm.classList.remove('config-form-disabled');
-            configInputs.forEach(el => { el.disabled = false; });
-            saveConfigBtn.disabled = false;
-        }
+        applyBotStatus(botActive);
     } catch (_) { }
 }
 

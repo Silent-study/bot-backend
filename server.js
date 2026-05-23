@@ -572,13 +572,49 @@ app.get('/stats', authMiddleware, async (req, res) => {
   }
 });
 
+app.get('/logs', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const [logs, total] = await Promise.all([
+      Log.find({ userId }).sort({ timestamp: -1 }).skip(skip).limit(limit).lean(),
+      Log.countDocuments({ userId }),
+    ]);
+
+    res.json({
+      logs,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load logs.' });
+  }
+});
+
 // ─── Bot Status ──────────────────────────────────────────────────────────────
+// Returns current bot active state
+app.get('/bot-status', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('botActive');
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    res.json({ botActive: user.botActive || false });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get bot status.' });
+  }
+});
+
 // Called by the Chrome Extension whenever the bot is toggled on/off
 app.post('/bot-status', authMiddleware, async (req, res) => {
   try {
     const { active } = req.body;
     if (typeof active !== 'boolean') return res.status(400).json({ error: 'active (boolean) required.' });
     await User.findByIdAndUpdate(req.user.userId, { botActive: active });
+    // Notify any open dashboard sessions in real-time
+    io.to(req.user.userId).emit('bot-status', { botActive: active });
     res.json({ ok: true, botActive: active });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update bot status.' });
