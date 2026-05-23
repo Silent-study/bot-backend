@@ -18,6 +18,7 @@ const logList = document.getElementById('log-list');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const stats = { questions: 0, videos: 0, vocab: 0 };
+let expiryInterval = null;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (status) => {
@@ -83,6 +84,7 @@ passwordInput.addEventListener('keydown', (e) => {
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 btnLogout.addEventListener('click', () => {
+    if (expiryInterval) clearInterval(expiryInterval);
     chrome.runtime.sendMessage({ type: 'LOGOUT' }, () => showLogin());
 });
 
@@ -104,12 +106,47 @@ function showDashboard(status) {
     panelDashboard.classList.remove('hidden');
 
     infoPlan.textContent = (status.plan || 'active').toUpperCase();
-    infoExpiry.textContent = status.expiresAt
-        ? new Date(status.expiresAt).toLocaleDateString()
-        : '—';
+    startExpiryCountdown(status.expiresAt);
 
     setBotToggle(status.botEnabled !== false);
     loadStats();
+}
+
+function startExpiryCountdown(expiresAt) {
+    if (expiryInterval) clearInterval(expiryInterval);
+    if (!expiresAt) {
+        infoExpiry.textContent = '—';
+        return;
+    }
+
+    const updateCountdown = () => {
+        const expiry = new Date(expiresAt);
+        const now = new Date();
+        const diff = expiry - now;
+        if (diff <= 0) {
+            infoExpiry.textContent = 'Expired';
+            clearInterval(expiryInterval);
+            return;
+        }
+
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        const pad = (num) => String(num).padStart(2, '0');
+
+        if (days > 0) {
+            infoExpiry.textContent = `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s remaining`;
+        } else if (hours > 0) {
+            infoExpiry.textContent = `${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s remaining`;
+        } else {
+            infoExpiry.textContent = `${pad(minutes)}m ${pad(seconds)}s remaining`;
+        }
+    };
+
+    updateCountdown();
+    expiryInterval = setInterval(updateCountdown, 1000);
 }
 
 function setBotToggle(enabled) {
