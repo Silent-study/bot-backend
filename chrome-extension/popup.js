@@ -194,7 +194,7 @@ const CONFIG_FIELDS = [
 function loadExtConfig() {
     chrome.storage.local.get(['token', 'botEnabled'], ({ token, botEnabled }) => {
         if (!token) return;
-        const backendBase = 'http://127.0.0.1:3000';
+        const backendBase = 'https://silentstudy.net/';
         fetch(backendBase + '/api/config', {
             headers: { 'Authorization': 'Bearer ' + token },
         })
@@ -267,7 +267,7 @@ document.getElementById('ext-save-config').addEventListener('click', () => {
             setTimeout(() => saveMsg.classList.add('hidden'), 2500);
             return;
         }
-        const backendBase = 'http://127.0.0.1:3000';
+        const backendBase = 'https://silentstudy.net/';
         const saveBtn = document.getElementById('ext-save-config');
         const saveMsg = document.getElementById('ext-save-msg');
         const accuracySlider = document.getElementById('ext-cfg-accuracy');
