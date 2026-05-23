@@ -1,6 +1,6 @@
 'use strict';
 
-const API_BASE = 'http://localhost:3000'; // Developed locally, change to 'https://silentstudy.net' for production
+const API_BASE = 'https://silentstudy.net';
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const panelLogin = document.getElementById('panel-login');
