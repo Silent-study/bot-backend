@@ -390,53 +390,69 @@ app.get('/download-extension', authMiddleware, (req, res) => {
 
 // ─── Stripe Routes ────────────────────────────────────────────────────────────
 
-const PLANS = {
-  day: { name: 'Day Key', price: 250 },
-  week: { name: 'Week Key', price: 1000 },
-  month: { name: 'Month Key', price: 2000 },
-  six_month: { name: '6 Months Key', price: 4000 },
-};
+function getPackagePrice(planId, addons = []) {
+  const hasService = addons.includes('service');
+  const hasProctor = addons.includes('proctor');
 
-const ADDONS = {
-  service: { name: 'Service Key (5 users)', price: 500 },
-  proctor: { name: 'Proctorio Bypass', price: 1000 },
-};
+  if (hasService && hasProctor) {
+    // Both Add-ons Package
+    const prices = { day: 1500, week: 4250, month: 13000, six_month: 31000 };
+    return prices[planId] || 0;
+  } else if (hasService) {
+    // Service Key Package
+    const prices = { day: 1000, week: 3500, month: 10000, six_month: 25000 };
+    return prices[planId] || 0;
+  } else if (hasProctor) {
+    // Proctor Bypass Package
+    const prices = { day: 500, week: 1750, month: 3000, six_month: 6000 };
+    return prices[planId] || 0;
+  } else {
+    // Base Package
+    const prices = { day: 250, week: 1000, month: 2000, six_month: 4000 };
+    return prices[planId] || 0;
+  }
+}
+
+function getPackageProductName(planId, addons = []) {
+  const planNames = { day: 'Day Key', week: 'Week Key', month: 'Month Key', six_month: '6 Months Key' };
+  const baseName = planNames[planId] || 'Access Key';
+  const hasService = addons.includes('service');
+  const hasProctor = addons.includes('proctor');
+
+  if (hasService && hasProctor) {
+    return `Silent Study \u2014 ${baseName} + Both Add-ons (5 users)`;
+  } else if (hasService) {
+    return `Silent Study \u2014 ${baseName} + Service Key Add-on (5 users)`;
+  } else if (hasProctor) {
+    return `Silent Study \u2014 ${baseName} + Proctorio Bypass Add-on (1 user)`;
+  } else {
+    return `Silent Study \u2014 ${baseName} (1 user)`;
+  }
+}
 
 app.post('/create-checkout-session', async (req, res) => {
   try {
     const { planId, addons = [], userId } = req.body;
-    const plan = PLANS[planId];
-    if (!plan) return res.status(400).json({ error: 'Invalid plan.' });
+    const finalPrice = getPackagePrice(planId, addons);
+    const productName = getPackageProductName(planId, addons);
+
+    if (finalPrice === 0) return res.status(400).json({ error: 'Invalid plan or addons configuration.' });
 
     const line_items = [{
       price_data: {
         currency: 'usd',
-        product_data: { name: 'Silent Study \u2014 ' + plan.name },
-        unit_amount: plan.price,
+        product_data: { name: productName },
+        unit_amount: finalPrice,
       },
       quantity: 1,
     }];
-
-    for (const addonId of addons) {
-      const addon = ADDONS[addonId];
-      if (addon) {
-        line_items.push({
-          price_data: {
-            currency: 'usd',
-            product_data: { name: 'Add-on: ' + addon.name },
-            unit_amount: addon.price,
-          },
-          quantity: 1,
-        });
-      }
-    }
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
-      metadata: { userId, planId },
+      metadata: { userId, planId, addons: JSON.stringify(addons) },
       success_url: frontendUrl + '/?payment=success',
       cancel_url: frontendUrl + '/#pricing',
     });
@@ -462,6 +478,7 @@ async function handleStripeWebhook(req, res) {
     const session = event.data.object;
     const userId = session.metadata && session.metadata.userId;
     const planId = session.metadata && session.metadata.planId;
+    const addons = session.metadata && session.metadata.addons ? JSON.parse(session.metadata.addons) : [];
     if (!userId) return res.json({ received: true });
 
     try {
@@ -471,12 +488,13 @@ async function handleStripeWebhook(req, res) {
       const now = new Date();
       user.isPaid = true;
       user.plan = planId || user.plan || 'month';
+      user.addons = addons || [];
       user.expiryDate = new Date(now.getTime() + planDays(user.plan) * 24 * 60 * 60 * 1000);
       user.licenseKey = 'SS-' + uuidv4().toUpperCase().replace(/-/g, '').slice(0, 12);
       await user.save();
 
       await sendEmail(user.email, 'Silent Study \u2014 Payment Confirmed!', buildConfirmEmail(user));
-      console.log('Payment confirmed for:', user.email, 'plan:', user.plan);
+      console.log('Payment confirmed for:', user.email, 'plan:', user.plan, 'addons:', user.addons);
     } catch (err) {
       console.error('Webhook user update error:', err);
     }
