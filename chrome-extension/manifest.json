@@ -16,10 +16,14 @@
     "host_permissions": [
         "*://*.edgenuity.com/*",
         "*://*.edgex.com/*",
-        "*://*.k12.com/*",
-        "http://localhost:3000/*",
-        "http://127.0.0.1:3000/*"
+        "*://*.k12.com/*"
     ],
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "silent-study@silentstudy.net",
+            "strict_min_version": "128.0"
+        }
+    },
     "background": {
         "service_worker": "background.js"
     },
