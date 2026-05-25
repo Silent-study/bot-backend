@@ -38,7 +38,9 @@ chrome.storage.onChanged.addListener((changes) => {
         if (entry) appendLog(entry.event, entry.detail);
     }
     if (changes.botEnabled) {
-        setBotToggle(changes.botEnabled.newValue === true);
+        const isEnabled = changes.botEnabled.newValue === true;
+        setBotToggle(isEnabled);
+        refreshConfigLock(isEnabled);
     }
 });
 
@@ -93,7 +95,10 @@ btnLogout.addEventListener('click', () => {
 // ─── Bot Toggle ───────────────────────────────────────────────────────────────
 btnToggle.addEventListener('click', () => {
     chrome.runtime.sendMessage({ type: 'TOGGLE_BOT' }, (res) => {
-        if (res) setBotToggle(res.botEnabled);
+        if (res) {
+            setBotToggle(res.botEnabled);
+            refreshConfigLock(res.botEnabled);
+        }
     });
 });
 
@@ -228,6 +233,15 @@ const CONFIG_FIELDS = [
     { key: 'autoProject', label: 'Auto Project' },
     { key: 'autoVocab', label: 'Auto Vocab / Instructions' },
 ];
+
+// Re-render config lock state using cached config — no network request needed
+function refreshConfigLock(botEnabled) {
+    const configPanel = document.getElementById('ptab-config');
+    if (!configPanel || configPanel.classList.contains('hidden')) return;
+    chrome.storage.local.get(['botConfig'], ({ botConfig }) => {
+        renderExtConfig(botConfig || {}, botEnabled);
+    });
+}
 
 function loadExtConfig() {
     chrome.storage.local.get(['token', 'botEnabled'], ({ token, botEnabled }) => {
