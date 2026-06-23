@@ -14,6 +14,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { notifyDiscordBot } = require('./utils/discordClient');
 const path = require('path');
 
 const { solveQuestion, solveOpenQuestion } = require('./brain');
@@ -74,6 +75,7 @@ const userSchema = new mongoose.Schema({
   addons: [String],
   expiryDate: { type: Date },
   licenseKey: { type: String },
+  stripeCustomerId: { type: String },
   hwid: { type: String },
   otp: { type: String },
   otpExpiry: { type: Date },
@@ -88,59 +90,96 @@ const userSchema = new mongoose.Schema({
     autoWrite: { type: Boolean, default: true },
     autoProject: { type: Boolean, default: true },
     autoVocab: { type: Boolean, default: true },
+    speed: { type: String, enum: ['slow', 'normal', 'fast'], default: 'normal' },
+    answerMode: { type: String, enum: ['safe', 'risky'], default: 'safe' },
+    notifications: { type: Boolean, default: true },
   },
+  // Discord integration
+  discordId: { type: String, default: null, sparse: true },
+  discordUsername: { type: String, default: null },
+  discordAccessToken: { type: String, default: null },
 });
 const User = mongoose.model('User', userSchema);
 
-// Answer database — DB lookup before hitting OpenAI
-const answerSchema = new mongoose.Schema({
-  hash: { type: String, index: true, unique: true },
-  questionText: { type: String },
-  answer: { type: String },
-  options: [String],
-  activityType: { type: String, enum: ['mcq', 'essay', 'vocab', 'dropdown', 'checkbox'], default: 'mcq' },
-  source: { type: String, enum: ['ai', 'verified'], default: 'ai' },
-  confidence: { type: Number, default: 0.7 },
-  hitCount: { type: Number, default: 1 },
+const ticketSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  discordId: { type: String, required: true },
+  discordThreadId: { type: String, required: true },
+  status: { type: String, enum: ['open', 'resolved'], default: 'open' },
+  category: { type: String, default: 'general' },
   createdAt: { type: Date, default: Date.now },
 });
-const Answer = mongoose.model('Answer', answerSchema);
+const Ticket = mongoose.model('Ticket', ticketSchema);
 
-// Per-user notes — every question solved gets recorded here for the eNotes tab
-const noteSchema = new mongoose.Schema({
-  userId: { type: String, index: true },
-  questionText: { type: String },
-  answer: { type: String },
-  activityType: { type: String, default: 'mcq' },
-  source: { type: String, enum: ['ai', 'db'], default: 'ai' },
-  timestamp: { type: Date, default: Date.now },
-});
-const Note = mongoose.model('Note', noteSchema);
 
-// Session activity log — feeds the live dashboard
-const logSchema = new mongoose.Schema({
-  userId: { type: String, index: true },
-  event: { type: String },
-  detail: { type: String, default: '' },
-  timestamp: { type: Date, default: Date.now },
-});
-const Log = mongoose.model('Log', logSchema);
 
-// ─── Rate Limiters ────────────────────────────────────────────────────────────
-const authLimiter = rateLimit({ windowMs: 60_000, max: 10, message: { error: 'Too many requests, slow down.' } });
-const solveLimiter = rateLimit({ windowMs: 60_000, max: 120, message: { error: 'Rate limit exceeded.' } });
+  const strikeSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    discordId: { type: String, required: true },
+    reason: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  });
+  const Strike = mongoose.model('Strike', strikeSchema);
 
-// ─── JWT Middleware ───────────────────────────────────────────────────────────
-const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-env';
+  // Answer database — DB lookup before hitting OpenAI
+  const answerSchema = new mongoose.Schema({
+    hash: { type: String, index: true, unique: true },
+    questionText: { type: String },
+    answer: { type: String },
+    options: [String],
+    activityType: { type: String, enum: ['mcq', 'essay', 'vocab', 'dropdown', 'checkbox'], default: 'mcq' },
+    source: { type: String, enum: ['ai', 'verified'], default: 'ai' },
+    confidence: { type: Number, default: 0.7 },
+    hitCount: { type: Number, default: 1 },
+    createdAt: { type: Date, default: Date.now },
+  });
+  const Answer = mongoose.model('Answer', answerSchema);
 
-function authMiddleware(req, res, next) {
+  // Per-user notes — every question solved gets recorded here for the eNotes tab
+  const noteSchema = new mongoose.Schema({
+    userId: { type: String, index: true },
+    questionText: { type: String },
+    answer: { type: String },
+    activityType: { type: String, default: 'mcq' },
+    source: { type: String, enum: ['ai', 'db'], default: 'ai' },
+    timestamp: { type: Date, default: Date.now },
+  });
+  const Note = mongoose.model('Note', noteSchema);
+
+  // Session activity log — feeds the live dashboard
+  const logSchema = new mongoose.Schema({
+    userId: { type: String, index: true },
+    event: { type: String },
+    detail: { type: String, default: '' },
+    timestamp: { type: Date, default: Date.now },
+  });
+  const Log = mongoose.model('Log', logSchema);
+
+  const onboardingDataSchema = new mongoose.Schema({
+    discordId: { type: String, required: true },
+    platform: { type: String, required: true },
+    goal: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  });
+  const OnboardingData = mongoose.model('OnboardingData', onboardingDataSchema);
+
+  // ─── Rate Limiters ────────────────────────────────────────────────────────────
+  const authLimiter = rateLimit({ windowMs: 60_000, max: 10, message: { error: 'Too many requests, slow down.' } });
+  const solveLimiter = rateLimit({ windowMs: 60_000, max: 120, message: { error: 'Rate limit exceeded.' } });
+
+  // ─── JWT Middleware ───────────────────────────────────────────────────────────
+  const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-env';
+
+  function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  // Allow token via query param only for the Discord OAuth redirect (browser can't set headers for redirects)
+  const queryToken = req.query.token && req.path === '/auth/discord' ? req.query.token : null;
+  const rawToken = header && header.startsWith('Bearer ') ? header.slice(7) : queryToken;
+  if(!rawToken) {
     return res.status(401).json({ error: 'No token provided.' });
   }
-  const token = header.slice(7);
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    req.user = jwt.verify(rawToken, JWT_SECRET);
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token.' });
@@ -149,22 +188,22 @@ function authMiddleware(req, res, next) {
 
 // ─── Email Helper ─────────────────────────────────────────────────────────────
 async function sendEmail(to, subject, html) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST?.trim(),
-    port: Number(process.env.SMTP_PORT?.trim()),
-    secure: Number(process.env.SMTP_PORT?.trim()) === 465,
-    auth: {
-      user: process.env.SMTP_USER?.trim(),
-      pass: process.env.SMTP_PASS?.trim(),
-    },
-  });
-  try {
-    await transporter.sendMail({ from: process.env.SMTP_FROM, to, subject, html });
-    console.log('Email sent to:', to);
-  } catch (err) {
-    console.error('Email failed:', err.message);
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST?.trim(),
+      port: Number(process.env.SMTP_PORT?.trim()),
+      secure: Number(process.env.SMTP_PORT?.trim()) === 465,
+      auth: {
+        user: process.env.SMTP_USER?.trim(),
+        pass: process.env.SMTP_PASS?.trim(),
+      },
+    });
+    try {
+      await transporter.sendMail({ from: process.env.SMTP_FROM, to, subject, html });
+      console.log('Email sent to:', to);
+    } catch (err) {
+      console.error('Email failed:', err.message);
+    }
   }
-}
 
 const OTP_EMAIL_HTML = (otp, title, body, color) => {
   const c = color || '#3b82f6';
@@ -360,6 +399,8 @@ app.get('/user', authMiddleware, async (req, res) => {
       expiryDate: user.expiryDate,
       licenseKey: user.licenseKey,
       createdAt: user.createdAt,
+      discordId: user.discordId || null,
+      discordUsername: user.discordUsername || null,
     });
   } catch (err) {
     console.error('user profile error:', err);
@@ -433,6 +474,10 @@ function getPackageProductName(planId, addons = []) {
 app.post('/create-checkout-session', async (req, res) => {
   try {
     const { planId, addons = [], userId } = req.body;
+    
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
     const finalPrice = getPackagePrice(planId, addons);
     const productName = getPackageProductName(planId, addons);
 
@@ -448,14 +493,23 @@ app.post('/create-checkout-session', async (req, res) => {
     }];
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const session = await stripe.checkout.sessions.create({
+    
+    const checkoutOptions = {
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
       metadata: { userId, planId, addons: JSON.stringify(addons) },
       success_url: frontendUrl + '/?payment=success',
       cancel_url: frontendUrl + '/#pricing',
-    });
+    };
+
+    if (user.stripeCustomerId) {
+      checkoutOptions.customer = user.stripeCustomerId;
+    } else {
+      checkoutOptions.customer_creation = 'always';
+    }
+
+    const session = await stripe.checkout.sessions.create(checkoutOptions);
 
     res.json({ id: session.id, url: session.url });
   } catch (err) {
@@ -489,12 +543,40 @@ async function handleStripeWebhook(req, res) {
       user.isPaid = true;
       user.plan = planId || user.plan || 'month';
       user.addons = addons || [];
+      user.stripeCustomerId = session.customer || user.stripeCustomerId;
       user.expiryDate = new Date(now.getTime() + planDays(user.plan) * 24 * 60 * 60 * 1000);
       user.licenseKey = 'SS-' + uuidv4().toUpperCase().replace(/-/g, '').slice(0, 12);
       await user.save();
 
       await sendEmail(user.email, 'Silent Study \u2014 Payment Confirmed!', buildConfirmEmail(user));
       console.log('Payment confirmed for:', user.email, 'plan:', user.plan, 'addons:', user.addons);
+
+      // Phase 2: Notify Discord bot to assign 'Active Subscriber' role
+      if (user.discordId) {
+        // Auto-join server
+        if (user.discordAccessToken && process.env.DISCORD_GUILD_ID && process.env.DISCORD_TOKEN_SERVERBOT) {
+          fetch(`https://discord.com/api/v10/guilds/${process.env.DISCORD_GUILD_ID}/members/${user.discordId}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bot ${process.env.DISCORD_TOKEN_SERVERBOT}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ access_token: user.discordAccessToken })
+          }).then(res => {
+            if (res.ok) console.log(`[Discord] Auto-joined ${user.discordUsername} to server!`);
+            else res.text().then(text => console.warn(`[Discord] Auto-join failed:`, res.status, text));
+          }).catch(err => console.error('[Discord] Auto-join network error:', err));
+        }
+
+        notifyDiscordBot({
+          action: 'ASSIGN_ROLE',
+          discordId: user.discordId,
+          data: {
+            plan: user.plan,
+            expiryDate: user.expiryDate,
+          }
+        }).catch(err => console.warn('[Discord] Webhook notify failed (non-critical):', err.message));
+      }
     } catch (err) {
       console.error('Webhook user update error:', err);
     }
@@ -566,6 +648,24 @@ app.post('/log', authMiddleware, async (req, res) => {
     const userId = req.user.userId;
     await Log.create({ userId, event, detail: detail || '' });
     io.to(userId).emit('activity-log', { event, detail: detail || '', timestamp: new Date() });
+
+    // Phase 2: Notify Discord bot on class completion events
+    const CLASS_DONE_EVENTS = ['CLASS_DONE', 'CLASS_COMPLETE', 'ACTIVITY_CYCLE_DONE'];
+    if (CLASS_DONE_EVENTS.includes(event)) {
+      User.findById(userId).select('discordId').then(user => {
+        if (user && user.discordId) {
+          const className = detail || 'your recent class';
+          notifyDiscordBot({
+            action: 'SEND_DM',
+            discordId: user.discordId,
+            data: { message: `🎉 Your automation for **${className}** is complete!` }
+          }).then(() => {
+            io.to(user._id.toString()).emit('discord-alert', { type: 'notification' });
+          }).catch(err => console.warn('[Discord] Class complete notify failed:', err.message));
+        }
+      }).catch(() => { });
+    }
+
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Log failed.' });
@@ -660,7 +760,7 @@ app.post('/config', authMiddleware, async (req, res) => {
     if (user.botActive) return res.status(403).json({ error: 'Cannot update config while bot is active. Stop the bot first.' });
 
     const { autoAdvance, autoSubmit, autoAssessment, assessmentAccuracy,
-      autoAssignment, autoWrite, autoProject, autoVocab } = req.body;
+      autoAssignment, autoWrite, autoProject, autoVocab, speed, answerMode, notifications } = req.body;
 
     const update = {};
     if (typeof autoAdvance === 'boolean') update['botConfig.autoAdvance'] = autoAdvance;
@@ -674,6 +774,9 @@ app.post('/config', authMiddleware, async (req, res) => {
       const clamped = Math.max(40, Math.min(90, assessmentAccuracy));
       update['botConfig.assessmentAccuracy'] = clamped;
     }
+    if (typeof speed === 'string') update['botConfig.speed'] = speed;
+    if (typeof answerMode === 'string') update['botConfig.answerMode'] = answerMode;
+    if (typeof notifications === 'boolean') update['botConfig.notifications'] = notifications;
 
     await User.findByIdAndUpdate(req.user.userId, { $set: update });
     res.json({ ok: true });
@@ -682,7 +785,404 @@ app.post('/config', authMiddleware, async (req, res) => {
   }
 });
 
-// ─── eNotes ───────────────────────────────────────────────────────────────────
+
+// ─── Phase 3: Internal Read APIs for Discord Bot ──────────────────────────────
+
+const internalDiscordAuth = (req, res, next) => {
+  const expectedKey = process.env.INTERNAL_API_KEY || '';
+  const receivedKey = req.headers['x-api-key'] || '';
+  if (!expectedKey || receivedKey !== expectedKey) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  next();
+};
+
+app.get('/internal/discord/onboarding/check/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) {
+      return res.json({ registered: false, hasActivePlan: false });
+    }
+    return res.json({ registered: true, hasActivePlan: !!user.isPaid });
+  } catch (err) {
+    console.error('Onboarding check error:', err);
+    res.status(500).json({ error: 'Failed to check onboarding status' });
+  }
+});
+
+app.post('/internal/discord/onboarding/data', internalDiscordAuth, express.json(), async (req, res) => {
+  try {
+    const { discordId, platform, goal } = req.body;
+    if (!discordId || !platform || !goal) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    await OnboardingData.create({ discordId, platform, goal });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Onboarding data error:', err);
+    res.status(500).json({ error: 'Failed to save onboarding data' });
+  }
+});
+
+app.get('/internal/discord/status/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({
+      isPaid: user.isPaid,
+      plan: user.plan,
+      expiryDate: user.expiryDate,
+      botActive: user.botActive,
+      addons: user.addons,
+    });
+  } catch (err) {
+    console.error('Discord status API error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/internal/discord/progress/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Calculate stats for the last 24 hours
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const logs = await Log.find({ userId: user._id, timestamp: { $gte: oneDayAgo } })
+      .sort({ timestamp: -1 });
+
+    let questionsAnswered = 0;
+    let videosSkipped = 0;
+    let vocabCompleted = 0;
+    let activitiesTotal = 0;
+
+    for (const log of logs) {
+      if (log.event.includes('ANSWERED')) questionsAnswered++;
+      if (log.event.includes('VIDEO')) videosSkipped++;
+      if (log.event.includes('VOCAB')) vocabCompleted++;
+      if (log.event.includes('CYCLE') || log.event.includes('CLASS')) activitiesTotal++;
+    }
+
+    res.json({
+      questionsAnswered,
+      videosSkipped,
+      vocabCompleted,
+      activitiesTotal,
+      recentLogs: logs.slice(0, 5), // return just the latest 5 for the Discord embed
+    });
+  } catch (err) {
+    console.error('Discord progress API error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.patch('/internal/discord/settings/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const allowedSettings = ['autoAdvance', 'autoSubmit', 'autoAssessment', 'assessmentAccuracy', 'autoAssignment', 'autoWrite', 'autoProject', 'autoVocab', 'speed', 'answerMode', 'notifications'];
+    const update = {};
+    for (const key of allowedSettings) {
+      if (req.body[key] !== undefined) {
+        if (key === 'assessmentAccuracy') {
+          update[`botConfig.${key}`] = Math.max(40, Math.min(90, Number(req.body[key])));
+        } else if (key === 'speed' || key === 'answerMode') {
+          update[`botConfig.${key}`] = String(req.body[key]);
+        } else {
+          update[`botConfig.${key}`] = Boolean(req.body[key]);
+        }
+      }
+    }
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ error: 'No valid settings provided' });
+    }
+
+    await User.findByIdAndUpdate(user._id, { $set: update });
+    res.json({ ok: true, update });
+  } catch (err) {
+    console.error('Discord settings API error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/internal/discord/control/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const { action } = req.body;
+    if (!['start', 'pause', 'stop'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const botActive = action === 'start';
+    await User.findByIdAndUpdate(user._id, { botActive });
+
+    // Broadcast to dashboard and extension so they update immediately
+    io.to(user._id.toString()).emit('bot-status', { botActive });
+
+    res.json({ ok: true, action, botActive });
+  } catch (err) {
+    console.error('Discord portal error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── SilentBot Internal Endpoints ───────────────────────────────────────────
+
+app.get('/internal/discord/classes/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    res.json({ botActive: user.botActive, botConfig: user.botConfig });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/internal/discord/usage/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    const count = await Log.countDocuments({ userId: user._id, event: 'QUESTION_SOLVED' });
+    res.json({ solvedCount: count });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/internal/discord/logs/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    const logs = await Log.find({ userId: user._id }).sort({ timestamp: -1 }).limit(5);
+    res.json({ logs });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/internal/discord/resume/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    if (!user.isPaid) return res.status(403).json({ error: 'Subscription required' });
+    
+    user.botActive = true;
+    await user.save();
+    res.json({ ok: true, message: 'Automation resumed' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/internal/discord/tickets/status/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const ticket = await Ticket.findOne({ discordId: req.params.discordId, status: 'open' });
+    if (!ticket) return res.json({ hasOpenTicket: false });
+    res.json({ hasOpenTicket: true, threadId: ticket.threadId, category: ticket.category });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    status: 'operational',
+    services: {
+      backend: 'online',
+      discord: 'online',
+      database: mongoose.connection.readyState === 1 ? 'online' : 'offline',
+      ai: 'online'
+    },
+    version: '1.2.0',
+    timestamp: new Date()
+  });
+});
+
+// Phase 4: Ticket endpoints
+app.post('/internal/discord/tickets/create', internalDiscordAuth, async (req, res) => {
+  try {
+    const { discordId, discordThreadId, category } = req.body;
+    if (!discordId || !discordThreadId) return res.status(400).json({ error: 'Missing required fields' });
+
+    const user = await User.findOne({ discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const existingOpenTicket = await Ticket.findOne({ userId: user._id, status: 'open' });
+    if (existingOpenTicket) {
+      return res.status(409).json({ error: 'User already has an open ticket', ticket: existingOpenTicket });
+    }
+
+    const ticket = await Ticket.create({
+      userId: user._id,
+      discordId,
+      discordThreadId,
+      category: category || 'general',
+    });
+
+    res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('Discord ticket create API error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/internal/discord/tickets/resolve', internalDiscordAuth, async (req, res) => {
+  try {
+    const { discordThreadId } = req.body;
+    if (!discordThreadId) return res.status(400).json({ error: 'Missing discordThreadId' });
+
+    const ticket = await Ticket.findOneAndUpdate(
+      { discordThreadId, status: 'open' },
+      { status: 'resolved' },
+      { new: true }
+    );
+
+    if (!ticket) return res.status(404).json({ error: 'Open ticket not found for this thread' });
+
+    res.json({ ok: true, ticket });
+  } catch (err) {
+    console.error('Discord ticket resolve API error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/internal/discord/strikes', internalDiscordAuth, async (req, res) => {
+  try {
+    const { discordId, reason } = req.body;
+    if (!discordId || !reason) return res.status(400).json({ error: 'Missing discordId or reason' });
+
+    // Look up user to see if they are linked
+    const user = await User.findOne({ discordId });
+
+    await Strike.create({
+      userId: user ? user._id : undefined,
+      discordId,
+      reason
+    });
+
+    const strikeCount = await Strike.countDocuments({ discordId });
+    const thresholdReached = strikeCount >= 3;
+
+    res.json({ ok: true, strikeCount, thresholdReached });
+  } catch (err) {
+    console.error('Discord strike API error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/internal/discord/strikes/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const { discordId } = req.params;
+    const strikes = await Strike.find({ discordId }).sort({ createdAt: -1 });
+    res.json({ strikes });
+  } catch (err) {
+    console.error('Discord get strikes error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── OrderBot Billing Endpoints ─────────────────────────────────────────────
+
+app.get('/internal/discord/billing/status/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let stripeStatus = 'unknown';
+    if (user.stripeCustomerId) {
+      try {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: user.stripeCustomerId,
+          status: 'all',
+          limit: 1
+        });
+        if (subscriptions.data.length > 0) {
+          stripeStatus = subscriptions.data[0].status;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch stripe subscription:', err.message);
+      }
+    }
+
+    res.json({
+      isPaid: user.isPaid,
+      plan: user.plan,
+      expiryDate: user.expiryDate,
+      stripeStatus
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/internal/discord/billing/invoice/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user || !user.stripeCustomerId) return res.status(404).json({ error: 'Not found' });
+
+    const invoices = await stripe.invoices.list({ customer: user.stripeCustomerId, limit: 1 });
+    if (invoices.data.length === 0) return res.json({ hasInvoice: false });
+
+    res.json({ hasInvoice: true, url: invoices.data[0].hosted_invoice_url, amount: invoices.data[0].amount_due });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.get('/internal/discord/billing/history/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.stripeCustomerId) return res.status(404).json({ error: 'No Stripe customer ID found' });
+
+    const invoices = await stripe.invoices.list({
+      customer: user.stripeCustomerId,
+      limit: 3
+    });
+
+    const history = invoices.data.map(inv => ({
+      amount: inv.amount_paid / 100,
+      currency: inv.currency.toUpperCase(),
+      date: new Date(inv.created * 1000).toISOString(),
+      url: inv.hosted_invoice_url,
+      status: inv.status
+    }));
+
+    res.json({ history });
+  } catch (err) {
+    console.error('Billing history error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/internal/discord/billing/portal/:discordId', internalDiscordAuth, async (req, res) => {
+  try {
+    const user = await User.findOne({ discordId: req.params.discordId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.stripeCustomerId) return res.status(404).json({ error: 'No Stripe customer ID found' });
+
+    const returnUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: `${returnUrl}/#dashboard`
+    });
+
+    res.json({ url: portalSession.url });
+  } catch (err) {
+    console.error('Billing portal error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Settings ───────────────────────────────────────────────────────────────────
 
 app.get('/notes', authMiddleware, async (req, res) => {
   try {
@@ -699,6 +1199,159 @@ app.get('/notes', authMiddleware, async (req, res) => {
     res.json({ notes, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to load notes.' });
+  }
+});
+
+// ─── Discord Integration ──────────────────────────────────────────────────────
+
+// Phase 1: Discord OAuth2 — Account Linking
+// Step 1: Redirect to Discord's authorize page (requires ?token=<JWT> for identity)
+app.get('/auth/discord', authMiddleware, (req, res) => {
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  const redirectUri = encodeURIComponent(process.env.DISCORD_REDIRECT_URI || '');
+  if (!clientId || !redirectUri) {
+    return res.status(500).json({ error: 'Discord OAuth2 is not configured on this server.' });
+  }
+  // State encodes the user's MongoDB ID so the callback can find the right account
+  const state = Buffer.from(req.user.userId).toString('base64url');
+  const discordAuthUrl =
+    `https://discord.com/oauth2/authorize` +
+    `?client_id=${clientId}` +
+    `&redirect_uri=${redirectUri}` +
+    `&response_type=code` +
+    `&scope=identify%20guilds.join` +
+    `&state=${state}`;
+  res.redirect(discordAuthUrl);
+});
+
+// Step 2: Discord redirects back here with ?code=... and ?state=...
+app.get('/auth/discord/callback', async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const { code, state } = req.query;
+  if (!code || !state) {
+    return res.redirect(`${frontendUrl}/dashboard?discord=error&reason=missing_params`);
+  }
+  let userId;
+  try {
+    userId = Buffer.from(state, 'base64url').toString('utf8');
+    // Validate it looks like a MongoDB ObjectId before hitting the DB
+    if (!/^[a-f\d]{24}$/i.test(userId)) throw new Error('invalid id format');
+  } catch {
+    return res.redirect(`${frontendUrl}/dashboard?discord=error&reason=invalid_state`);
+  }
+  try {
+    // Exchange the code for a Discord access token
+    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID,
+        client_secret: process.env.DISCORD_CLIENT_SECRET,
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: process.env.DISCORD_REDIRECT_URI,
+      }),
+    });
+    if (!tokenRes.ok) throw new Error('Token exchange failed: ' + tokenRes.status);
+    const tokenData = await tokenRes.json();
+
+    // Fetch the Discord user profile
+    const profileRes = await fetch('https://discord.com/api/users/@me', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    if (!profileRes.ok) throw new Error('Profile fetch failed: ' + profileRes.status);
+    const profile = await profileRes.json();
+
+    // Guard: ensure this Discord ID isn't already linked to a *different* Silent Study account
+    const existingLink = await User.findOne({ discordId: profile.id }).select('_id');
+    if (existingLink && String(existingLink._id) !== userId) {
+      console.warn(`[Discord] discordId=${profile.id} already linked to a different account — blocked.`);
+      return res.redirect(`${frontendUrl}/dashboard?discord=error&reason=already_linked`);
+    }
+
+    // Build a clean display name (modern Discord dropped discriminators for most accounts)
+    const discordUsername = profile.discriminator && profile.discriminator !== '0'
+      ? `${profile.username}#${profile.discriminator}`
+      : profile.username;
+
+    // Persist the Discord identity on the user document
+    await User.findByIdAndUpdate(userId, { 
+      discordId: profile.id, 
+      discordUsername,
+      discordAccessToken: tokenData.access_token 
+    });
+
+    console.log(`[Discord] Linked discordId=${profile.id} (${discordUsername}) to userId=${userId}`);
+    return res.redirect(`${frontendUrl}/dashboard?discord=linked`);
+  } catch (err) {
+    console.error('[Discord] OAuth2 callback error:', err.message);
+    return res.redirect(`${frontendUrl}/dashboard?discord=error&reason=server_error`);
+  }
+});
+
+// Phase 1: Unlink Discord account
+app.post('/auth/discord/unlink', authMiddleware, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.userId, { discordId: null, discordUsername: null });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to unlink Discord account.' });
+  }
+});
+
+// Phase 3: Internal API middleware — validates a shared key, not user JWTs
+function internalApiMiddleware(req, res, next) {
+  const key = req.headers['x-internal-api-key'];
+  if (!key || key !== process.env.INTERNAL_API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  next();
+}
+
+// Phase 3: Read-only user status — called by Discord bot's /status command
+app.get('/internal/discord/user-status', internalApiMiddleware, async (req, res) => {
+  try {
+    const { discordId } = req.query;
+    if (!discordId) return res.status(400).json({ error: 'discordId required.' });
+    const user = await User.findOne({ discordId }).select(
+      'email plan isPaid expiryDate botActive discordUsername addons'
+    );
+    if (!user) return res.status(404).json({ error: 'No account linked to this Discord ID.' });
+    res.json({
+      email: user.email,
+      plan: user.plan,
+      isPaid: user.isPaid,
+      expiryDate: user.expiryDate,
+      botActive: user.botActive || false,
+      discordUsername: user.discordUsername,
+      addons: user.addons || [],
+    });
+  } catch (err) {
+    console.error('internal/user-status error:', err);
+    res.status(500).json({ error: 'Failed to load user status.' });
+  }
+});
+
+// Phase 3: Read-only user progress — called by Discord bot's /progress command
+app.get('/internal/discord/user-progress', internalApiMiddleware, async (req, res) => {
+  try {
+    const { discordId } = req.query;
+    if (!discordId) return res.status(400).json({ error: 'discordId required.' });
+    const user = await User.findOne({ discordId }).select('_id discordUsername email');
+    if (!user) return res.status(404).json({ error: 'No account linked to this Discord ID.' });
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const logs = await Log.find({ userId: String(user._id), timestamp: { $gte: since } }).lean();
+    res.json({
+      discordUsername: user.discordUsername,
+      questionsAnswered: logs.filter(l => l.event && l.event.includes('ANSWERED')).length,
+      videosSkipped: logs.filter(l => l.event === 'VIDEO_SKIP_DONE').length,
+      vocabCompleted: logs.filter(l => l.event === 'VOCAB_DONE').length,
+      activitiesTotal: logs.filter(l => l.event === 'NEXT_ACTIVITY_CLICKED').length,
+      recentLogs: logs.slice(-5).reverse().map(l => ({ event: l.event, detail: l.detail, timestamp: l.timestamp })),
+    });
+  } catch (err) {
+    console.error('internal/user-progress error:', err);
+    res.status(500).json({ error: 'Failed to load user progress.' });
   }
 });
 
@@ -730,6 +1383,9 @@ io.on('connection', (socket) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
+// ─── Cron Jobs ────────────────────────────────────────────────────────────────
+require('./cron/renewalReminders');
+
 server.listen(PORT, () => {
   console.log('[SilentStudy] Server running at http://localhost:' + PORT);
   console.log('[SilentStudy] JWT secret: ' + (JWT_SECRET !== 'change-this-secret-in-env' ? 'custom set' : 'DEFAULT — set JWT_SECRET in .env!'));
