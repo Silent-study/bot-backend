@@ -1,0 +1,452 @@
+[
+    {
+        "id": "faq_01",
+        "topic": "Getting Started",
+        "question": "What is Silent Study Bot?",
+        "answer": "Silent Study Bot is a Chrome browser extension that automates repetitive tasks on Imagine Edgenuity, saving you time so you can focus on what matters most."
+    },
+    {
+        "id": "faq_02",
+        "topic": "Getting Started",
+        "question": "Who is Silent Study Bot designed for?",
+        "answer": "Silent Study Bot is built for students who want to do more than just study — those who want to automate busy work on Imagine Edgenuity and use their time more productively."
+    },
+    {
+        "id": "faq_03",
+        "topic": "Getting Started",
+        "question": "How do I sign up?",
+        "answer": "Visit our website and click Sign Up. You can register using your Discord account, Gmail, or a regular email address — whichever is most convenient for you."
+    },
+    {
+        "id": "faq_04",
+        "topic": "Getting Started",
+        "question": "What sign-up methods are supported?",
+        "answer": "You can sign up using Discord, Gmail, or your own email. All three methods give you full access to the platform."
+    },
+    {
+        "id": "faq_05",
+        "topic": "Getting Started",
+        "question": "Do I need to create a separate account, or can I use my existing Google or Discord account?",
+        "answer": "No separate account needed. You can log in directly with your existing Google or Discord account using the OAuth sign-in options on our website."
+    },
+    {
+        "id": "faq_06",
+        "topic": "Plans & Pricing",
+        "question": "What subscription plans does Silent Study Bot offer?",
+        "answer": "We offer multiple plans to fit your needs: a few hours, 1 day, 1 week, 10 days, 1 month, and 1 year. There's something for everyone from a quick trial to long-term use."
+    },
+    {
+        "id": "faq_07",
+        "topic": "Plans & Pricing",
+        "question": "What is the shortest plan available?",
+        "answer": "Our shortest plan is a few hours — perfect if you want to try Silent Study Bot before committing to a longer subscription."
+    },
+    {
+        "id": "faq_08",
+        "topic": "Plans & Pricing",
+        "question": "Is there a free trial?",
+        "answer": "We offer a very affordable short-term plan that is a Day Key only for $2.50 for 24 hours so you can test the bot at minimal cost before choosing a longer plan."
+    },
+    {
+        "id": "faq_09",
+        "topic": "Plans & Pricing",
+        "question": "Can I upgrade my plan later?",
+        "answer": "Yes. You can upgrade to a longer plan at any time from your dashboard once your current plan expires or as needed."
+    },
+    {
+        "id": "faq_10",
+        "topic": "Plans & Pricing",
+        "question": "Which plan offers the best value for money?",
+        "answer": "The yearly plan offers the greatest savings per day. If you plan to use Silent Study Bot regularly, it's the most cost-effective option."
+    },
+    {
+        "id": "faq_11",
+        "topic": "Payment",
+        "question": "What payment methods are accepted?",
+        "answer": "We accept Apple Pay, Google Pay, debit/credit cards, and OneLink — all powered by Stripe for secure transactions."
+    },
+    {
+        "id": "faq_12",
+        "topic": "Payment",
+        "question": "Is it safe to enter my payment details?",
+        "answer": "Absolutely. All payments are processed through Stripe, one of the most trusted and secure payment platforms in the world. We never store your card details."
+    },
+    {
+        "id": "faq_13",
+        "topic": "Payment",
+        "question": "Can I pay using OneLink?",
+        "answer": "Yes, OneLink is a supported payment method. You can use it at checkout just like any other payment option."
+    },
+    {
+        "id": "faq_14",
+        "topic": "Payment",
+        "question": "Do I get a receipt after purchasing?",
+        "answer": "Yes. Stripe automatically sends a payment receipt to your registered email address after every successful purchase."
+    },
+    {
+        "id": "faq_15",
+        "topic": "Payment",
+        "question": "What happens if my payment fails?",
+        "answer": "If your payment fails, no charge is made. You can retry with the same or a different payment method. Contact support if the issue persists."
+    },
+    {
+        "id": "faq_16",
+        "topic": "Installation & Setup",
+        "question": "How do I install Silent Study Bot?",
+        "answer": "Go to the Chrome Web Store, search for 'Silent Study Bot', and click Install. Once installed, click the extension icon in your browser toolbar to get started."
+    },
+    {
+        "id": "faq_17",
+        "topic": "Installation & Setup",
+        "question": "Which browser does Silent Study Bot support?",
+        "answer": "Silent Study Bot is a Chrome extension and works on Google Chrome. Make sure you're using an updated version of Chrome for the best experience."
+    },
+    {
+        "id": "faq_18",
+        "topic": "Installation & Setup",
+        "question": "Where can I find the Silent Study Bot extension?",
+        "answer": "You can find it on the Chrome Web Store by searching for 'Silent Study Bot'. Make sure you install the official extension by our team."
+    },
+    {
+        "id": "faq_19",
+        "topic": "Installation & Setup",
+        "question": "How do I log into the extension after installing it?",
+        "answer": "Click the Silent Study Bot extension icon in your Chrome toolbar. It will ask for your login credentials — use the same email and password you used when signing up on our website."
+    },
+    {
+        "id": "faq_20",
+        "topic": "Installation & Setup",
+        "question": "I installed the extension but it's not asking for a login. What should I do?",
+        "answer": "Try clicking the extension icon directly from the toolbar. If it still doesn't prompt a login, try restarting Chrome or reinstalling the extension."
+    },
+    {
+        "id": "faq_21",
+        "topic": "Using the Bot",
+        "question": "How do I start the bot after logging in?",
+        "answer": "After logging in to the extension, activate the bot using the activation toggle. Then go to Imagine Edgenuity and select an activity — the bot will take it from there automatically."
+    },
+    {
+        "id": "faq_22",
+        "topic": "Using the Bot",
+        "question": "What does 'selecting an activity' mean?",
+        "answer": "On Imagine Edgenuity, an activity refers to the specific task or section you want the bot to work on. Once you select it, the bot begins automating that task without any further input needed."
+    },
+    {
+        "id": "faq_23",
+        "topic": "Using the Bot",
+        "question": "Does the bot run automatically or do I have to monitor it?",
+        "answer": "The bot runs fully automatically once you activate it and select an activity. You don't need to watch it — it handles everything on its own."
+    },
+    {
+        "id": "faq_24",
+        "topic": "Using the Bot",
+        "question": "Can I pause or stop the bot?",
+        "answer": "Yes. You can deactivate the bot at any time through the extension. Your license time will still be counted while the bot is running, so deactivate it when not in use."
+    },
+    {
+        "id": "faq_25",
+        "topic": "Using the Bot",
+        "question": "Can I use Silent Study Bot on multiple devices?",
+        "answer": "Your license is tied to one account. You can log in on multiple devices but we recommend using it on one device at a time to avoid conflicts."
+    },
+    {
+        "id": "faq_26",
+        "topic": "Dashboard",
+        "question": "How do I access my dashboard?",
+        "answer": "After logging in to our website, you'll be taken directly to your dashboard. If you're returning, just log in with your credentials and you'll land on the dashboard home."
+    },
+    {
+        "id": "faq_27",
+        "topic": "Dashboard",
+        "question": "What can I see on the dashboard homepage?",
+        "answer": "The homepage shows your active subscription plan, activity status (active or deactivated), time remaining before expiry, your license key, and four usage counters."
+    },
+    {
+        "id": "faq_28",
+        "topic": "Dashboard",
+        "question": "What are the four counters on my dashboard?",
+        "answer": "The counters track: queries handled, videos handled, vocabularies handled, and total activities. These give you a live snapshot of your bot's performance."
+    },
+    {
+        "id": "faq_29",
+        "topic": "Dashboard",
+        "question": "What is the live activity console?",
+        "answer": "The console is a real-time log at the bottom of your dashboard homepage that shows everything the bot is currently doing — so you can always see what's happening."
+    },
+    {
+        "id": "faq_30",
+        "topic": "Dashboard",
+        "question": "Where can I find my license key?",
+        "answer": "Your license key is displayed on the dashboard homepage under your subscription details. You can copy it from there whenever needed."
+    },
+    {
+        "id": "faq_31",
+        "topic": "Bot Configuration",
+        "question": "Can I customize how the bot behaves?",
+        "answer": "Yes. The 'Bot Configuration' section in the dashboard menu lets you adjust how the bot operates to better fit your preferences and workflow."
+    },
+    {
+        "id": "faq_32",
+        "topic": "Bot Configuration",
+        "question": "Where is the bot configuration menu?",
+        "answer": "It's the second menu item on your dashboard. Click it to access all available settings for customizing your bot's behavior."
+    },
+    {
+        "id": "faq_33",
+        "topic": "Bot Configuration",
+        "question": "Will changing the configuration affect my active session?",
+        "answer": "Changes to the configuration typically take effect on the next session. We recommend deactivating the bot before adjusting settings to ensure everything applies correctly."
+    },
+    {
+        "id": "faq_34",
+        "topic": "E-books & Learning Material",
+        "question": "What is the e-books section?",
+        "answer": "The e-books section is a library of educational material that the bot has generated. It contains structured content to help you learn more effectively."
+    },
+    {
+        "id": "faq_35",
+        "topic": "E-books & Learning Material",
+        "question": "Who writes the e-books?",
+        "answer": "The educational content in the e-books section is generated automatically by the bot as it works — no manual writing needed on your part."
+    },
+    {
+        "id": "faq_36",
+        "topic": "E-books & Learning Material",
+        "question": "Can I download the e-books?",
+        "answer": "The e-books are accessible within your dashboard. Please refer to the setup guide or contact support for details on downloading or exporting them."
+    },
+    {
+        "id": "faq_37",
+        "topic": "Setup Guide",
+        "question": "Where can I find instructions on how to use Silent Study Bot?",
+        "answer": "The Setup Guide is available directly on your dashboard. It walks you through everything from installation to running your first automated activity."
+    },
+    {
+        "id": "faq_38",
+        "topic": "Setup Guide",
+        "question": "I'm new and don't know where to start. What should I do first?",
+        "answer": "Start by signing up on our website, purchasing a plan, then installing the Chrome extension. After that, check the Setup Guide on your dashboard — it covers every step in detail."
+    },
+    {
+        "id": "faq_39",
+        "topic": "License & Account",
+        "question": "What is a license key and what do I use it for?",
+        "answer": "A license key is a unique code tied to your subscription. It verifies your access and may be needed for troubleshooting or support requests."
+    },
+    {
+        "id": "faq_40",
+        "topic": "License & Account",
+        "question": "My subscription expired. How do I renew it?",
+        "answer": "Log in to your dashboard and select a new plan. You'll go through the same checkout process as before and your bot will be reactivated once the payment is complete."
+    },
+    {
+        "id": "faq_41",
+        "topic": "License & Account",
+        "question": "How do I know how much time is left on my subscription?",
+        "answer": "Your dashboard homepage shows the exact time remaining on your current plan in real time."
+    },
+    {
+        "id": "faq_42",
+        "topic": "License & Account",
+        "question": "Can I change my registered email address?",
+        "answer": "For account changes like updating your email, please contact our support team and we'll assist you directly."
+    },
+    {
+        "id": "faq_43",
+        "topic": "License & Account",
+        "question": "I forgot my password. How do I reset it?",
+        "answer": "On the login page, click 'Forgot password' and follow the instructions sent to your registered email. If you signed up via Discord or Gmail, just use that login method instead."
+    },
+    {
+        "id": "faq_44",
+        "topic": "Troubleshooting",
+        "question": "The bot is not working after I activated it. What should I do?",
+        "answer": "Make sure you're logged in to the extension, your subscription is active, and you've selected an activity on Imagine Edgenuity. If it still doesn't work, try refreshing the page or reinstalling the extension."
+    },
+    {
+        "id": "faq_45",
+        "topic": "Troubleshooting",
+        "question": "I can't log in to the extension. What are the possible reasons?",
+        "answer": "Double-check that you're using the same credentials as your Silent Study Bot website account. Also confirm your subscription is still active — expired plans will block access."
+    },
+    {
+        "id": "faq_46",
+        "topic": "Troubleshooting",
+        "question": "The extension isn't appearing in my Chrome toolbar. What do I do?",
+        "answer": "Click the puzzle icon in your Chrome toolbar to see all extensions, then pin Silent Study Bot to your toolbar. If you don't see it, try reinstalling from the Chrome Web Store."
+    },
+    {
+        "id": "faq_47",
+        "topic": "Troubleshooting",
+        "question": "My dashboard is not showing the correct time remaining. Is this a bug?",
+        "answer": "Try refreshing your dashboard page. If the issue persists, reach out to support with your license key and we'll look into it right away."
+    },
+    {
+        "id": "faq_48",
+        "topic": "Troubleshooting",
+        "question": "The bot stopped mid-activity. What happened?",
+        "answer": "This can happen if the browser tab was closed, the internet connection dropped, or the subscription expired. Check these factors first, then reactivate the bot and reselect the activity."
+    },
+    {
+        "id": "faq_49",
+        "topic": "Support",
+        "question": "How do I contact support?",
+        "answer": "You can reach our support team through this Discord server by opening a support ticket. Please include your license key and a description of your issue for a faster response."
+    },
+    {
+        "id": "faq_50",
+        "topic": "Support",
+        "question": "Is there a refund policy?",
+        "answer": "Please contact our support team for questions about refunds. Our team will review your case and get back to you as quickly as possible."
+    },
+    {
+        "id": "feature_01",
+        "topic": "Website Engine Features",
+        "question": "How does the Auto Assessment system work?",
+        "answer": "Our Auto Assessment engine answers every quiz, test, and exam with a perfect score. It automatically references a real database of saved answers first. If the problem is new, an advanced AI fallback takes over to compute the accurate response. This works seamlessly across multiple-choice, true/false, fill-in-the-blank, and more."
+    },
+    {
+        "id": "feature_02",
+        "topic": "Website Engine Features",
+        "question": "Is the bot safe from teacher detection?",
+        "answer": "Yes. Silent Study operates like a normal browser extension and is undetected by Edgenuity's bot-checking algorithms. It includes customizable delays to randomize behavior and a Stealth Mode that highlights correct answers only when you physically hover over them if a instructor or teacher is monitoring your screen sharing."
+    },
+    {
+        "id": "feature_03",
+        "topic": "Website Engine Features",
+        "question": "What is the Video Skipper and does it work on EdgeEX?",
+        "answer": "The Video Skipper automatically bypasses required lecture videos on EX and EdgeEX classes so you never sit through another lecture. It skips what you do not need, moving you forward to the next module instantly."
+    },
+    {
+        "id": "feature_04",
+        "topic": "Website Engine Features",
+        "question": "How does the Auto Write feature handle essays and free response?",
+        "answer": "Auto Write provides high-quality answers for free-response writing questions and complex essays using AI. It completely passes plagiarism filters every time. You can choose pure AI generation or activate a built-in humanizer to make outputs less detectable. It also uses keyword matching mechanics for Online Content modules."
+    },
+    {
+        "id": "feature_05",
+        "topic": "Website Engine Features",
+        "question": "Can I run this on proctored tests monitored by Proctorio?",
+        "answer": "Yes. Silent Study includes a Proctorio Bypass that removes full-screen lock restrictions, clipboard interaction blocks, and tab focus restrictions. This allows the extension to function normally and completely undetected during proctored boundaries."
+    },
+    {
+        "id": "feature_06",
+        "topic": "Website Engine Features",
+        "question": "What kind of non-question activities can the bot skip?",
+        "answer": "The Language Activity Skipper automatically skips interactive learning games, mathematical graphs, vocabulary matching, lab sessions, and foreign language speaking assignments (by automatically routing a corrupted audio file) with full credit."
+    },
+    {
+        "id": "feature_07",
+        "topic": "Website Engine Features",
+        "question": "How do I ensure the bot runs overnight without timing out?",
+        "answer": "The Prevent Logout feature continuously updates activity states to trick Edgenuity's idle tracking system. This prevents you from being kicked out due to AFK, allowing you to run the bot completely unattended overnight and wake up to completed classes."
+    },
+    {
+        "id": "feature_08",
+        "topic": "Website Engine Features",
+        "question": "Can I configure my own automation delays?",
+        "answer": "Yes. You have full precision over Configurable Delays. Within your dashboard, you can define specific minimum and maximum delay ranges for both auto-submitting and auto-advancing across different activity types. Silent Study will randomly select a duration within that frame each time to replicate natural student timing."
+    },
+    {
+        "id": "feature_09",
+        "topic": "Website Engine Features",
+        "question": "What are the configuration presets?",
+        "answer": "The Config System lets you capture your entire setup profile as a shareable preset string. You can export your personalized profile rules or import high-speed recommended delay presets from other advanced users without manual configuration steps."
+    },
+    {
+        "id": "feature_10",
+        "topic": "Website Engine Features",
+        "question": "Can I run multiple classes at the same time?",
+        "answer": "Yes, our engine features a Duplicate Tabs mode. You can launch Silent Study across several separate browser tabs simultaneously to accelerate your completion speeds across multiple classes at once."
+    },
+    {
+        "id": "feature_11",
+        "topic": "Website Engine Features",
+        "question": "What is the Mobile Dashboard and remote control system?",
+        "answer": "The Mobile Dashboard is an end-to-end encrypted interface that allows you to manage sessions from your phone while the bot runs on your desktop. You can read live item scores, check logging consoles, and broadcast instant Pause, Start, Resume, and Stop commands remotely. Because it is encrypted end-to-end, your raw operational tokens are never deciphered by our server layers."
+    },
+    {
+        "id": "feature_12",
+        "topic": "Website Engine Features",
+        "question": "What is the Scheduler feature?",
+        "answer": "The Scheduler allows you to define automated active execution time frames, day-of-week active filters, and automatic rest breaks every N items. This lets the extension run safely during standard daytime school windows and pause naturally during late-night cycles automatically."
+    },
+    {
+        "id": "feature_13",
+        "topic": "Website Engine Features",
+        "question": "How does the extension handle data privacy and screen blurring?",
+        "answer": "The engine provides a Censor Private Info utility that instantly blurs your name, university/school, grades, and profile variables on screen. This protects your identity if you are sharing screens or capturing desktop images to send to other users."
+    },
+    {
+        "id": "privacy_01",
+        "topic": "Privacy Policy",
+        "question": "What data credentials does Silent Study collect and how are they saved?",
+        "answer": "We collect your email address during registration to establish accounts and authorize subscriptions. Your password is encrypted via HTTPS and saved solely as a high-entropy, salted bcrypt hash; your plaintext password is never recorded. Upon logging in, an authentication JSON Web Token (JWT) is issued and saved inside your browser's isolated local container (chrome.storage.local). Tokens are destroyed upon manual logout or plan expiry."
+    },
+    {
+        "id": "privacy_02",
+        "topic": "Privacy Policy",
+        "question": "How does the bot process my Edgenuity answers and page text?",
+        "answer": "When active on edgenuity.com, edgex.com, or k12.com, the extension parses on-screen question text strings and option lists. This context is funneled to our API servers using HTTPS/TLS end-to-end encryption to generate correct choices. This text context is parsed strictly in volatile memory and is dropped immediately upon returning the solution—it is never stored permanently on disk or coupled to your profile identity."
+    },
+    {
+        "id": "privacy_03",
+        "topic": "Privacy Policy",
+        "question": "What data is explicitly excluded from your tracking systems?",
+        "answer": "We enforce strict data minimization. Silent Study does not collect health, legal, financial records, or sensitive demographic lines. We never log browser search patterns, general history, keystrokes, camera records, mouse hover vectors, or microphone streams. We do not place third-party tracking pixels, marketing blocks, or advertising cookies."
+    },
+    {
+        "id": "privacy_04",
+        "topic": "Privacy Policy",
+        "question": "Does Silent Study share my profile info with external companies?",
+        "answer": "No. Personal context data is never sold, traded, rented, or repurposed for targeted ads, credit validation, or background profiling. Data transfers are limited to encrypted cloud infrastructure instances covered under Data Processing Agreements, or when legally compelled by an explicit judicial court order."
+    },
+    {
+        "id": "privacy_05",
+        "topic": "Privacy Policy",
+        "question": "What are my rights regarding data access and absolute account purging?",
+        "answer": "Regardless of your territory, you hold complete sovereignty over your data. You maintain the right to inspect, export, correct, or request the permanent deletion of your profile history. Direct data purge requests can be filed with the privacy department at privacy@silentstudy.net and are completely fulfilled within 30 days without any baseline fee barriers."
+    },
+    {
+        "id": "privacy_06",
+        "topic": "Privacy Policy",
+        "question": "What is your stance on children's data collection?",
+        "answer": "Silent Study is an academic automation package built for high school and university contexts. We strictly do not knowingly gather information from children under the age of 13. If a legal guardian discovers a minor has generated an account, they can notify us at privacy@silentstudy.net to initiate an immediate clean database sweep."
+    },
+    {
+        "id": "tos_01",
+        "topic": "Terms of Service",
+        "question": "What legal agreement occurs when I interact with your tool?",
+        "answer": "By downloading the extension or interacting with silentstudy.net, you explicitly agree to enter a legally binding contract governed by our Terms of Service. If you object to any structural operational rule, you must immediately drop your access, delete the plugin, and exit our domain."
+    },
+    {
+        "id": "tos_02",
+        "topic": "Terms of Service",
+        "question": "What structural bounds exist on my single-user license key?",
+        "answer": "Silent Study issues a personal, non-transferable, revocable license. Sharing your profile account key or license data with external parties is explicitly prohibited. The system enforces client boundaries by locking keys to specific local browser sandbox environments."
+    },
+    {
+        "id": "tos_03",
+        "topic": "Terms of Service",
+        "question": "What security rules protect the application API layers?",
+        "answer": "To protect our platform infrastructure, users are explicitly forbidden from reverse-engineering, decompiling, or probing the application source code. Intercepting or altering underlying backend port API requests, or deploying high-frequency scraping bots against our endpoints will trigger immediate license revocation without an appeal path."
+    },
+    {
+        "id": "tos_04",
+        "topic": "Terms of Service",
+        "question": "How are billing cycles, Stripe renewals, and adjustments managed?",
+        "answer": "Paid access tiers are billed upfront via Stripe and configure an automated rollover cycle. Your selected tier (Daily, Weekly, Monthly, or 6-Monthly) will continue to process charges unless manually terminated via your web account panel before your scheduled anniversary date."
+    },
+    {
+        "id": "tos_05",
+        "topic": "Terms of Service",
+        "question": "What academic compliance constraints should I be aware of?",
+        "answer": "Users retain absolute operational accountability for how they run this utility. You agree to ensure that your extension configuration does not conflict with your specific institution's honor codes, school regulations, or local student conduct agreements."
+    },
+    {
+        "id": "tos_06",
+        "topic": "Terms of Service",
+        "question": "What liability constraints limit Silent Study's financial exposure?",
+        "answer": "Silent Study services are delivered strictly 'As Is' and 'As Available' without implicit merchantability or operational stability guarantees. Silent Study is entirely immune to any indirect, structural, incidental, or consequential damages (such as academic impacts or system interruptions) originating from the use or malfunction of our extension modules."
+    }
+]
