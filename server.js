@@ -843,8 +843,11 @@ STRICT INSTRUCTIONS:
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4o',
-        messages: openRouterMessages
+        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        messages: openRouterMessages,
+        reasoning: {
+          enabled: true
+        }
       })
     });
 
